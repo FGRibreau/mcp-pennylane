@@ -1,0 +1,12 @@
+/target/
+**/target/
+.env
+.envrc
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.claude/
+.gstack
+dogfood-output
+SPEC.md

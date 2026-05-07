@@ -1,0 +1,80 @@
+name: Refresh OpenAPI
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — catch Pennylane Company API drift weekly.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  refresh:
+    name: Refresh accounting.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git author
+        run: |
+          git config user.name "openapi-refresh-bot"
+          git config user.email "openapi-refresh-bot@users.noreply.github.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-refresh-openapi-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-refresh-openapi-
+
+      - name: Run refresh-openapi script
+        run: cargo run -p refresh-openapi
+
+      - name: Detect drift
+        id: drift
+        run: |
+          if git diff --quiet -- openapi/accounting.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No drift detected; openapi/accounting.json is up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Drift detected in openapi/accounting.json:"
+            git diff --stat -- openapi/accounting.json
+          fi
+
+      - name: Open pull request
+        if: steps.drift.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(openapi): refresh accounting.json (Pennylane API drift)'
+          title: 'chore(openapi): refresh accounting.json (Pennylane API drift)'
+          branch: auto/refresh-openapi-${{ github.run_id }}
+          delete-branch: true
+          author: openapi-refresh-bot <openapi-refresh-bot@users.noreply.github.com>
+          committer: openapi-refresh-bot <openapi-refresh-bot@users.noreply.github.com>
+          labels: |
+            dependencies
+            automated
+          add-paths: |
+            openapi/accounting.json
+          body: |
+            Automatic weekly refresh of the vendored Pennylane Company API v2 OpenAPI spec.
+
+            CI will validate that the essentials whitelist is still present (build will fail
+            if a renamed/removed op breaks the contract). Review and merge if green.
+
+            Triggered by `.github/workflows/refresh-openapi.yml` (cron `0 6 * * 1`).

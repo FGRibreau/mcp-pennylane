@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["server", "scripts/refresh-openapi"]
+
+[workspace.package]
+authors = ["François-Guillaume Ribreau <rust@fgribreau.com>"]
+license = "MIT"
+repository = "https://github.com/FGRibreau/mcp-pennylane"
+edition = "2021"
