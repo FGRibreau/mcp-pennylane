@@ -11,7 +11,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-const SPEC_RELATIVE_PATH: &str = "../openapi/accounting.json";
+const SPEC_RELATIVE_PATH: &str = "openapi/accounting.json";
 const MAX_TOOL_NAME_LENGTH: usize = 64;
 
 /// Operations exposed directly in `tools/list`. Everything else is reachable

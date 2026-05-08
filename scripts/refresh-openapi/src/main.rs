@@ -18,7 +18,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 const SPEC_URL: &str = "https://pennylane.readme.io/openapi/accounting.json";
-const VENDORED_RELATIVE: &str = "openapi/accounting.json";
+const VENDORED_RELATIVE: &str = "server/openapi/accounting.json";
 
 #[derive(Parser, Debug)]
 #[command(
