@@ -88,13 +88,13 @@
 
 ## C'est quoi ?
 
-`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Environ 72 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne — la totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
+`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Environ 73 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne — la totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
 
 Pilotez votre compta depuis un chat : lister et créer des factures clients, rapprocher des transactions bancaires, interroger le grand livre, générer les exports FEC pour votre expert-comptable, gérer les mandats GoCardless et SEPA — le tout en langage naturel.
 
 ## Fonctionnalités
 
-- ✨ **Toutes les 163 opérations Pennylane** — 72 essentielles directement + `pennylane_search_tools` + `pennylane_execute` pour la longue traîne
+- ✨ **Toutes les 163 opérations Pennylane** — 73 essentielles directement + `pennylane_search_tools` + `pennylane_execute` pour la longue traîne
 - 🔒 **Auto-détection du mode lecture seule** — interroge `GET /me` au démarrage, force le readonly si chaque scope du token finit par `:readonly`
 - ⚡ **Deux transports** — stdio pour Claude Desktop, HTTP streamable pour le distant (`/mcp` + `/health`)
 - ⚙️ **Codegen via OpenAPI** — `build.rs` parse la spec vendorisée, fail-fast si la whitelist dérive
@@ -222,7 +222,7 @@ Pennylane déploie des breaking changes sur son Company API le **8 avril 2026**.
 
 ## Catalogue d'outils
 
-Environ 72 outils essentiels sont exposés directement : clients, fournisseurs, factures clients + fournisseurs, produits, devis, banque, journaux, comptes/écritures/lignes du grand livre, balance de vérification, exercices fiscaux, catégories analytiques, exports FEC, pièces jointes, changelogs, mandats GoCardless et SEPA, `getMe`. La totalité des ~163 opérations reste accessible via les méta-outils.
+Environ 73 outils essentiels sont exposés directement : clients, fournisseurs, factures clients + fournisseurs, produits, devis, banque, journaux, comptes/écritures/lignes du grand livre, balance de vérification, exercices fiscaux, catégories analytiques, exports FEC, pièces jointes, changelogs, mandats GoCardless et SEPA, `getMe`. La totalité des ~163 opérations reste accessible via les méta-outils.
 
 Les noms des outils correspondent à l'`operationId` Pennylane à l'identique (par ex. `getCustomerInvoices`, `postLedgerEntries`), pour grepper proprement contre la spec OpenAPI officielle. La liste curée vit dans la [constante `ESSENTIALS` de `server/build.rs`](./server/build.rs).
 
