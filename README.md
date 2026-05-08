@@ -1,8 +1,10 @@
+<p align="right"><b>🇫🇷 Français</b> · <a href="README-EN.md">🇬🇧 English</a></p>
+
 <div align="center">
 
 # mcp-pennylane
 
-**Drive your Pennylane accounting from Claude — invoices, ledger, banking, FEC exports**
+**Pilotez votre compta Pennylane depuis Claude — factures, journal, banque, FEC**
 
 <br/>
 
@@ -31,28 +33,28 @@
         <img src="assets/sponsors/france-nuage.svg" height="60" alt="France-Nuage"/><br/>
         <b>France-Nuage</b>
       </a><br/>
-      <sub>Sovereign French cloud to host your accounting exports and FEC archives.</sub>
+      <sub>Cloud souverain français pour héberger vos exports comptables et archives FEC.</sub>
     </td>
     <td align="center" width="175">
       <a href="https://hook0.com/?mtm_source=github&mtm_medium=sponsor&mtm_campaign=hook0&mtm_content=mcp-pennylane">
         <img src="assets/sponsors/hook0.png" height="60" alt="Hook0"/><br/>
         <b>Hook0</b>
       </a><br/>
-      <sub>Forward Pennylane webhooks as signed events to your back-office stack.</sub>
+      <sub>Diffusez les webhooks Pennylane comme événements signés vers votre back-office.</sub>
     </td>
     <td align="center" width="175">
       <a href="https://getnatalia.com/?mtm_source=github&mtm_medium=sponsor&mtm_campaign=natalia&mtm_content=mcp-pennylane">
         <img src="assets/sponsors/natalia.svg" height="60" alt="Natalia"/><br/>
         <b>Natalia</b>
       </a><br/>
-      <sub>AI voice agent that fields supplier and customer calls about invoices.</sub>
+      <sub>Agent vocal IA qui répond aux appels fournisseurs et clients sur les factures.</sub>
     </td>
     <td align="center" width="175">
       <a href="https://www.netir.fr/?mtm_source=github&mtm_medium=sponsor&mtm_campaign=netir&mtm_content=mcp-pennylane">
         <img src="assets/sponsors/netir.svg" height="60" alt="Netir"/><br/>
         <b>Netir</b>
       </a><br/>
-      <sub>Hire vetted French freelance accountants and finance ops engineers.</sub>
+      <sub>Recrutez des comptables et finance ops freelances français vérifiés.</sub>
     </td>
   </tr>
   <tr>
@@ -61,194 +63,194 @@
         <img src="assets/sponsors/nobullshitconseil.svg" height="60" alt="NoBullshitConseil"/><br/>
         <b>NoBullshitConseil</b>
       </a><br/>
-      <sub>Finance ops and ERP advisory without the bullshit. Pennylane integrations.</sub>
+      <sub>Conseil finance ops et ERP sans bullshit. Spécialiste des intégrations Pennylane.</sub>
     </td>
     <td align="center" width="233">
       <a href="https://qualneo.fr/?mtm_source=github&mtm_medium=sponsor&mtm_campaign=qualneo&mtm_content=mcp-pennylane">
         <img src="assets/sponsors/qualneo.svg" height="60" alt="Qualneo"/><br/>
         <b>Qualneo</b>
       </a><br/>
-      <sub>Qualiopi LMS for French trainers, with Pennylane-ready billing exports.</sub>
+      <sub>LMS Qualiopi pour formateurs français, avec exports de facturation prêts pour Pennylane.</sub>
     </td>
     <td align="center" width="233">
       <a href="https://www.recapro.ai/?mtm_source=github&mtm_medium=sponsor&mtm_campaign=recapro&mtm_content=mcp-pennylane">
         <img src="assets/sponsors/recapro.png" height="60" alt="Recapro"/><br/>
         <b>Recapro</b>
       </a><br/>
-      <sub>Private AI to transcribe accountant meetings and draft client memos on-prem.</sub>
+      <sub>IA privée pour transcrire vos rendez-vous comptables et rédiger les comptes-rendus on-prem.</sub>
     </td>
   </tr>
 </table>
 
-> **Interested in sponsoring?** [Get in touch](mailto:rust@fgribreau.com)
+> **Envie de devenir sponsor ?** [Contactez-nous](mailto:rust@fgribreau.com)
 
 ---
 
-## What is this?
+## C'est quoi ?
 
-`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). About 72 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail — so the full 163-op surface stays usable without flooding the host's tool budget.
+`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Environ 72 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne — la totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
 
-Drive your accounting from a chat: list and create customer invoices, reconcile bank transactions, query the ledger, generate FEC exports for your accountant, manage GoCardless and SEPA mandates, all from natural language.
+Pilotez votre compta depuis un chat : lister et créer des factures clients, rapprocher des transactions bancaires, interroger le grand livre, générer les exports FEC pour votre expert-comptable, gérer les mandats GoCardless et SEPA — le tout en langage naturel.
 
-## Features
+## Fonctionnalités
 
-- ✨ **All 163 Pennylane ops** — 72 essentials direct + `pennylane_search_tools` + `pennylane_execute` for the long tail
-- 🔒 **Read-only auto-detect** — probes `GET /me` at startup, forces read-only when every token scope ends with `:readonly`
-- ⚡ **Two transports** — stdio for Claude Desktop, streamable HTTP for remote (`/mcp` + `/health`)
-- ⚙️ **OpenAPI-driven codegen** — `build.rs` parses the vendored spec, fail-fast on whitelist drift
-- 🤖 **Weekly auto-PR** — GitHub Action diffs upstream every Monday and opens a PR if the spec drifted
-- 🛡️ **Token redaction** — `Bearer abcd***wxyz` on every log path, accounting bodies never logged at INFO
-- 💡 **Rich error mapping** — `UNAUTHORIZED`, `VALIDATION_FAILED`, `RATE_LIMITED`, … with truncated upstream body and actionable hints
-- 📦 **Single static binary** — `cargo install`, GitHub Releases (linux/macOS/windows × x86_64/aarch64), Homebrew tap
+- ✨ **Toutes les 163 opérations Pennylane** — 72 essentielles directement + `pennylane_search_tools` + `pennylane_execute` pour la longue traîne
+- 🔒 **Auto-détection du mode lecture seule** — interroge `GET /me` au démarrage, force le readonly si chaque scope du token finit par `:readonly`
+- ⚡ **Deux transports** — stdio pour Claude Desktop, HTTP streamable pour le distant (`/mcp` + `/health`)
+- ⚙️ **Codegen via OpenAPI** — `build.rs` parse la spec vendorisée, fail-fast si la whitelist dérive
+- 🤖 **Auto-PR hebdomadaire** — une GitHub Action diffe l'upstream tous les lundis et ouvre une PR si la spec a bougé
+- 🛡️ **Token redacté** — `Bearer abcd***wxyz` sur tous les chemins de log, les bodies comptables jamais loggés en INFO
+- 💡 **Erreurs structurées** — `UNAUTHORIZED`, `VALIDATION_FAILED`, `RATE_LIMITED`, … avec body upstream tronqué et hint actionnable
+- 📦 **Binaire statique unique** — `cargo install`, GitHub Releases (linux/macOS/windows × x86_64/aarch64), tap Homebrew
 
-## Quick Start
+## Démarrage rapide
 
 ```bash
-# 1. Install
+# 1. Installer
 cargo install mcp-pennylane
 
-# 2. Generate a Pennylane API token in Settings → Connectivity → Developers
-#    Recommended scope: "Read only — retrieve data"
-export PENNYLANE_API_KEY="your-pennylane-token"
+# 2. Générer un token Pennylane dans Paramètres → Connectivité → Développeurs
+#    Scope recommandé : « Lecture seule — récupérer les données »
+export PENNYLANE_API_KEY="votre-token-pennylane"
 
-# 3. Wire it into Claude Desktop, then restart Claude
+# 3. Brancher dans Claude Desktop, puis redémarrer Claude
 cat <<'EOF' >> ~/Library/Application\ Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "pennylane": {
       "command": "/usr/local/bin/mcp-pennylane",
-      "env": { "PENNYLANE_API_KEY": "your-pennylane-token" }
+      "env": { "PENNYLANE_API_KEY": "votre-token-pennylane" }
     }
   }
 }
 EOF
 ```
 
-That's it — Claude now sees `getMe`, `getCustomers`, `pennylane_search_tools`, and 70+ other tools.
+C'est tout — Claude voit maintenant `getMe`, `getCustomers`, `pennylane_search_tools`, et 70+ autres outils.
 
-> 💡 The server probes `GET /me` at startup. If your token is read-only, it auto-enables read-only mode (banner reads `mode=readonly (auto)`). Set `PENNYLANE_READONLY=true` to skip the probe and force read-only deterministically (recommended for CI).
+> 💡 Le serveur interroge `GET /me` au démarrage. Si votre token est en lecture seule, il active automatiquement le mode readonly (la bannière affiche `mode=readonly (auto)`). Définissez `PENNYLANE_READONLY=true` pour ignorer la sonde et forcer le readonly de manière déterministe (recommandé en CI).
 
 ## Configuration
 
-### Environment variables
+### Variables d'environnement
 
-| Variable | Default | Purpose |
+| Variable | Défaut | Rôle |
 |---|---|---|
-| `PENNYLANE_API_KEY` | *required* | Bearer token (Settings → Connectivity → Developers) |
-| `PENNYLANE_BASE_URL` | `https://app.pennylane.com` | Override for proxy or hypothetical regional URL |
-| `PENNYLANE_READONLY` | *(auto-detected)* | `true` / `false` to skip the `/me` scope probe |
-| `PENNYLANE_ENV` | `production` | `production` / `sandbox` — visual cue in banner and `getMe` |
-| `PENNYLANE_API_2026` | `false` | Send `X-Use-2026-API-Changes: true` (preview phase) |
-| `MCP_PENNYLANE_TRANSPORT` | `stdio` | `stdio` or `http` |
-| `RUST_LOG` | `info` | Standard `tracing-subscriber` env filter |
+| `PENNYLANE_API_KEY` | *requis* | Token Bearer (Paramètres → Connectivité → Développeurs) |
+| `PENNYLANE_BASE_URL` | `https://app.pennylane.com` | Override pour proxy ou éventuelle URL régionale |
+| `PENNYLANE_READONLY` | *(auto-détecté)* | `true` / `false` pour court-circuiter la sonde `/me` |
+| `PENNYLANE_ENV` | `production` | `production` / `sandbox` — repère visuel dans la bannière et dans `getMe` |
+| `PENNYLANE_API_2026` | `false` | Envoie l'en-tête `X-Use-2026-API-Changes: true` (phase preview) |
+| `MCP_PENNYLANE_TRANSPORT` | `stdio` | `stdio` ou `http` |
+| `RUST_LOG` | `info` | Filtre standard `tracing-subscriber` |
 
-### CLI flags
+### Flags CLI
 
-Every env var has a matching `--flag` (e.g. `--token`, `--base-url`, `--readonly`, `--env`, `--api-2026`, `--transport`, `--host`, `--port`, `--log-level`). Run `mcp-pennylane --help` for the full list.
+Chaque variable d'environnement a un `--flag` équivalent (`--token`, `--base-url`, `--readonly`, `--env`, `--api-2026`, `--transport`, `--host`, `--port`, `--log-level`). Lancez `mcp-pennylane --help` pour la liste complète.
 
-## Install
+## Installation
 
-| Channel | Command |
+| Canal | Commande |
 |---|---|
 | crates.io | `cargo install mcp-pennylane` |
 | Homebrew | `brew install fgribreau/tap/mcp-pennylane` |
-| GitHub Releases | [Download tarball](https://github.com/FGRibreau/mcp-pennylane/releases/latest) (linux/macOS/windows × x86_64/aarch64) |
+| GitHub Releases | [Télécharger l'archive](https://github.com/FGRibreau/mcp-pennylane/releases/latest) (linux/macOS/windows × x86_64/aarch64) |
 
-## Usage
+## Utilisation
 
-Three end-to-end workflows you can drive from Claude:
+Trois workflows de bout en bout que vous pouvez piloter depuis Claude :
 
-**1. List recent unpaid invoices.** *"Show my unpaid customer invoices from the last 30 days."* → Claude calls `getCustomerInvoices` with a filter like `[{"field":"status","operator":"eq","value":"unpaid"},{"field":"date","operator":"gteq","value":"2026-04-06"}]`, walks the `next_cursor` pagination if needed.
+**1. Lister les factures impayées récentes.** *« Montre-moi mes factures clients impayées des 30 derniers jours. »* → Claude appelle `getCustomerInvoices` avec un filtre du type `[{"field":"status","operator":"eq","value":"unpaid"},{"field":"date","operator":"gteq","value":"2026-04-06"}]`, parcourt la pagination via `next_cursor` si nécessaire.
 
-**2. Reconcile a bank transaction.** *"Find an unmatched €1,250 transaction this week and link it to the right invoice."* → Claude calls `getTransactions`, then `pennylane_search_tools(query="match")` to discover the matching operation, then `pennylane_execute(tool_name="postCustomerInvoiceMatchedTransactions", params={"id": <invoice_id>, "transaction_id": <tx_id>})`.
+**2. Rapprocher une transaction bancaire.** *« Trouve une transaction de 1 250 € non rapprochée cette semaine et lie-la à la bonne facture. »* → Claude appelle `getTransactions`, puis `pennylane_search_tools(query="match")` pour découvrir l'opération de rapprochement, puis `pennylane_execute(tool_name="postCustomerInvoiceMatchedTransactions", params={"id": <id_facture>, "transaction_id": <id_tx>})`.
 
-**3. Generate a FEC export for Q1 2026.** *"Generate the FEC for January through March 2026 and tell me when it's ready."* → Claude calls `exportFec` with `{"start_date":"2026-01-01","end_date":"2026-03-31"}`, polls `getFecExport` until status flips to `done`, returns the download URL.
+**3. Générer un FEC pour le T1 2026.** *« Génère le FEC de janvier à mars 2026 et préviens-moi quand il est prêt. »* → Claude appelle `exportFec` avec `{"start_date":"2026-01-01","end_date":"2026-03-31"}`, polle `getFecExport` jusqu'à ce que le statut passe à `done`, puis renvoie l'URL de téléchargement.
 
-## Read-only mode
+## Mode lecture seule
 
-`mcp-pennylane` resolves the read-only posture in two steps:
+`mcp-pennylane` résout la posture readonly en deux temps :
 
-1. **Auto-detect** (default) — when `PENNYLANE_READONLY` is unset, the server probes `GET /me` once at startup, reads the token's `scopes` array, and forces read-only mode iff every scope ends with `:readonly`. Banner reads `mode=readonly (auto)` or `mode=read+write (auto)`.
-2. **Explicit override** — set `PENNYLANE_READONLY=true` (or `false`) to skip the probe entirely. Banner reads `mode=… (explicit)`. Useful in CI for deterministic startup.
+1. **Auto-détection** (par défaut) — quand `PENNYLANE_READONLY` n'est pas défini, le serveur interroge `GET /me` une fois au démarrage, lit le tableau `scopes` du token, et force le readonly **uniquement si** chaque scope finit par `:readonly`. La bannière affiche `mode=readonly (auto)` ou `mode=read+write (auto)`.
+2. **Override explicite** — `PENNYLANE_READONLY=true` (ou `false`) court-circuite complètement la sonde. Bannière : `mode=… (explicit)`. Utile en CI pour un démarrage déterministe.
 
-Whatever the source, when read-only is active, write operations are filtered out at registration time AND `pennylane_execute` returns a structured `READONLY_MODE` error before any HTTP call to Pennylane.
+Quelle que soit l'origine, lorsque le readonly est actif, les opérations d'écriture sont filtrées au moment de l'enregistrement ET `pennylane_execute` renvoie une erreur structurée `READONLY_MODE` avant tout appel HTTP vers Pennylane.
 
 ```bash
-# Defense-in-depth: explicit + read-only Pennylane token scope
-export PENNYLANE_API_KEY=…                # token created with "Read only — retrieve data"
-export PENNYLANE_READONLY=true            # explicit server-side filter
+# Defense-in-depth : explicite + scope du token Pennylane en lecture seule
+export PENNYLANE_API_KEY=…                # token créé avec « Lecture seule »
+export PENNYLANE_READONLY=true            # filtre serveur explicite
 mcp-pennylane
 ```
 
-The Pennylane token scope is the radio button at token creation in **Settings → Connectivity → Developers**. One layer protects against a misconfigured server, the other against a misconfigured token.
+Le scope du token Pennylane est le radio bouton à la création du token dans **Paramètres → Connectivité → Développeurs**. Une couche protège contre un serveur mal configuré, l'autre contre un token mal configuré.
 
-## Logging & privacy
+## Logs et confidentialité
 
-- Logs go to **stderr only** — never stdout, which would corrupt the MCP framing on the stdio transport.
-- The Pennylane bearer token is **always redacted** through `redact_bearer()` (`Bearer abcd***wxyz`), even at TRACE level.
-- INFO / WARN / ERROR logs **never include Pennylane response bodies** — accounting data is sensitive (RGPD, secret des affaires).
-- TRACE level surfaces full request URLs and response bodies. Enable it only for local debugging on a sandbox account.
-- No telemetry, no phone-home, no opt-in instrumentation.
+- Les logs sortent **uniquement sur stderr** — jamais sur stdout, ce qui corromprait le framing MCP du transport stdio.
+- Le token Pennylane Bearer est **toujours redacté** via `redact_bearer()` (`Bearer abcd***wxyz`), même en niveau TRACE.
+- Les niveaux INFO / WARN / ERROR **n'incluent jamais les bodies de réponse** — la donnée comptable est sensible (RGPD, secret des affaires).
+- TRACE expose les URLs de requête complètes et les bodies de réponse. À n'activer qu'en debug local sur un compte sandbox.
+- Aucune télémétrie, aucun phone-home, aucune instrumentation opt-in.
 
-## Streamable HTTP transport
+## Transport HTTP streamable
 
 ```bash
 mcp-pennylane --transport http --host 127.0.0.1 --port 8000
-# MCP endpoint: http://127.0.0.1:8000/mcp
-# Health:       http://127.0.0.1:8000/health
+# Endpoint MCP : http://127.0.0.1:8000/mcp
+# Health        : http://127.0.0.1:8000/health
 ```
 
-The Pennylane API key still lives in `PENNYLANE_API_KEY` server-side — the server is single-tenant per process. **Authentication between the MCP client and this server is intentionally none.** Bind to `127.0.0.1` and put a reverse proxy in front of it for any non-local exposure (Cloudflare Access, Authelia, Caddy basic-auth, etc.). An OSS standalone server should not bake in opinions about external auth.
+Le token Pennylane reste dans `PENNYLANE_API_KEY` côté serveur — l'instance est mono-tenant par processus. **L'authentification entre le client MCP et ce serveur est volontairement absente.** Bindez sur `127.0.0.1` et placez un reverse proxy devant pour toute exposition non locale (Cloudflare Access, Authelia, Caddy basic-auth, etc.). Un serveur OSS standalone ne doit pas figer d'opinions sur l'auth externe.
 
 ## Sandbox
 
-`PENNYLANE_ENV=sandbox` is a **visual hint only** — Pennylane uses the same base URL for sandbox and production. The value is surfaced in three places to prevent the classic "I just modified production while testing" mistake:
+`PENNYLANE_ENV=sandbox` est un **repère visuel uniquement** — Pennylane utilise la même URL de base pour le sandbox et la production. La valeur est exposée à trois endroits pour éviter le classique « oups, j'ai modifié la prod » :
 
-1. The startup banner on stderr: `mcp-pennylane v0.1.0 — Pennylane Company API v2.0 — env=sandbox — mode=readonly (auto)`.
-2. The `getMe` response, augmented with `_mcp_pennylane = { env, server_version, spec_version, readonly, readonly_source, api_2026 }`.
-3. The MCP `serverInfo.instructions` string.
+1. La bannière de démarrage sur stderr : `mcp-pennylane v0.1.0 — Pennylane Company API v2.0 — env=sandbox — mode=readonly (auto)`.
+2. La réponse `getMe`, augmentée de `_mcp_pennylane = { env, server_version, spec_version, readonly, readonly_source, api_2026 }`.
+3. Le champ `serverInfo.instructions` du protocole MCP.
 
-## API 2026 changes
+## Breaking changes API 2026
 
-Pennylane is rolling out breaking changes to its Company API on **April 8, 2026**. From January 14 to April 8, 2026 the new behaviour is opt-in via `X-Use-2026-API-Changes: true`. Set `PENNYLANE_API_2026=true` (or `--api-2026`) to send the header now.
+Pennylane déploie des breaking changes sur son Company API le **8 avril 2026**. Du 14 janvier au 8 avril 2026, le nouveau comportement est opt-in via `X-Use-2026-API-Changes: true`. Définissez `PENNYLANE_API_2026=true` (ou `--api-2026`) pour envoyer l'en-tête dès maintenant.
 
-| Phase | When | Behaviour |
+| Phase | Quand | Comportement |
 |---|---|---|
-| Preview | Jan 14 → Apr 8, 2026 | Opt-in via env var |
-| Default flip | Apr 8, 2026 | New behaviour upstream-default. **v1.0** tag here, env var becomes opt-out |
-| Cleanup | Jul 1, 2026 | Legacy behaviour removed upstream — env var is a no-op |
+| Preview | 14 janvier → 8 avril 2026 | Opt-in via la variable d'env |
+| Bascule | 8 avril 2026 | Le nouveau comportement devient la valeur upstream par défaut. **v1.0** taggué ce jour-là, la variable devient opt-out / legacy |
+| Nettoyage | 1er juillet 2026 | L'ancien comportement est retiré upstream — la variable devient un no-op |
 
-## Tool catalog
+## Catalogue d'outils
 
-About 72 essentials are exposed directly: customers, suppliers, customer + supplier invoices, products, quotes, banking, journals, ledger accounts/entries/lines, trial balance, fiscal years, analytical categories, FEC exports, file attachments, changelogs, GoCardless and SEPA mandates, `getMe`. The full ~163 operations stay reachable through the meta-tools.
+Environ 72 outils essentiels sont exposés directement : clients, fournisseurs, factures clients + fournisseurs, produits, devis, banque, journaux, comptes/écritures/lignes du grand livre, balance de vérification, exercices fiscaux, catégories analytiques, exports FEC, pièces jointes, changelogs, mandats GoCardless et SEPA, `getMe`. La totalité des ~163 opérations reste accessible via les méta-outils.
 
-Tool names match the Pennylane `operationId` verbatim (e.g. `getCustomerInvoices`, `postLedgerEntries`), so they grep cleanly against the official OpenAPI spec. The full curated list lives in the [`ESSENTIALS` constant in `server/build.rs`](./server/build.rs).
+Les noms des outils correspondent à l'`operationId` Pennylane à l'identique (par ex. `getCustomerInvoices`, `postLedgerEntries`), pour grepper proprement contre la spec OpenAPI officielle. La liste curée vit dans la [constante `ESSENTIALS` de `server/build.rs`](./server/build.rs).
 
 ## Roadmap
 
-- Pennylane Firm API as a sibling binary `mcp-pennylane-firm`
-- Docker image once HTTP-mode usage warrants it
+- API Firm Pennylane comme binaire frère `mcp-pennylane-firm`
+- Image Docker quand l'usage du transport HTTP le justifiera
 
-## Development
+## Développement
 
 ```bash
 # Build
 cargo build --release
 
-# Refresh the vendored Pennylane OpenAPI spec
+# Rafraîchir la spec OpenAPI Pennylane vendorisée
 cargo run -p refresh-openapi
 cargo run -p refresh-openapi -- --diff   # dry run
-cargo run -p refresh-openapi -- --check  # exit non-zero if drift
+cargo run -p refresh-openapi -- --check  # exit non-zero en cas de drift
 
-# Run the test suite (unit + invariant)
+# Suite de tests (unit + invariant)
 cargo test --workspace
 
-# Run the integration tests against a Pennylane sandbox (read-only)
+# Tests d'intégration contre un sandbox Pennylane (lecture seule)
 PENNYLANE_API_KEY=… PENNYLANE_READONLY=true cargo test --workspace --features integration-tests
 ```
 
-A weekly GitHub Action runs `cargo run -p refresh-openapi` every Monday at 06:00 UTC and opens a PR if the upstream spec drifted. CI on the PR validates that every essential operation is still present (`build.rs` panics if a renamed/removed op breaks the contract); merge once green.
+Une GitHub Action hebdomadaire lance `cargo run -p refresh-openapi` chaque lundi à 06h00 UTC et ouvre une PR si la spec upstream a dérivé. La CI sur la PR vérifie que toutes les opérations essentielles sont toujours présentes (`build.rs` panique si une op renommée/retirée casse le contrat) ; mergez quand le vert est là.
 
-## License
+## Licence
 
-MIT — see [LICENSE](LICENSE).
+MIT — voir [LICENSE](LICENSE).
