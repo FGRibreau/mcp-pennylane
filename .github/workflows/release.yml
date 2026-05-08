@@ -12,8 +12,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: CHANGELOG.md
+
   upload-binaries:
     name: Upload binary (${{ matrix.target }})
+    needs: [create-release]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
