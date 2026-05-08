@@ -21,7 +21,7 @@ name = "mcp-pennylane"
 path = "src/main.rs"
 
 [dependencies]
-rmcp = { version = "0.12", features = ["server", "transport-io", "transport-streamable-http-server"] }
+rmcp = { version = "1.4", features = ["server", "transport-io", "transport-streamable-http-server"] }
 
 tokio = { version = "1", features = ["full"] }
 
