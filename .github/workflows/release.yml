@@ -65,10 +65,19 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
+  # Publish-side jobs gated behind the `release` GitHub Actions environment.
+  # The environment carries the privileged secrets (CARGO_REGISTRY_TOKEN,
+  # HOMEBREW_TAP_GITHUB_TOKEN) and a tag-only deployment branch policy (v*)
+  # so a push to a feature branch can never reach these credentials.
+  # Add reviewers in repo Settings → Environments → release for manual approval.
+
   publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: [upload-binaries]
+    environment:
+      name: release
+      url: https://crates.io/crates/mcp-pennylane
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +95,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-publish-
 
+      - name: Verify CARGO_REGISTRY_TOKEN secret is set
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is not configured in the 'release' environment."
+            echo "::error::Add it in Settings → Environments → release → Add secret."
+            echo "::error::Failing fast rather than silently skipping (per repo policy)."
+            exit 1
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
       - name: Publish mcp-pennylane to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -95,7 +115,21 @@ jobs:
     name: Bump Homebrew tap formula
     runs-on: ubuntu-latest
     needs: [upload-binaries, publish-crates]
+    environment:
+      name: release
+      url: https://github.com/FGRibreau/homebrew-tap
     steps:
+      - name: Verify HOMEBREW_TAP_GITHUB_TOKEN secret is set
+        run: |
+          if [ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_GITHUB_TOKEN secret is not configured in the 'release' environment."
+            echo "::error::Add it in Settings → Environments → release → Add secret."
+            echo "::error::Failing fast rather than silently skipping (per repo policy)."
+            exit 1
+          fi
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
       - name: Bump fgribreau/homebrew-tap formula
         uses: dawidd6/action-homebrew-bump-formula@v3
         with:
