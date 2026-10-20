@@ -4,7 +4,7 @@
 
 # mcp-pennylane
 
-**Drive your Pennylane accounting from Claude — invoices, ledger, banking, FEC exports**
+**Read and write your Pennylane accounting from Claude (invoices, quotes, ledger entries, receipts, bank reconciliation), FEC exports included**
 
 <br/>
 
@@ -19,6 +19,8 @@
 [![CI](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml/badge.svg)](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://rust-lang.org)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-6366f1.svg)](https://modelcontextprotocol.io)
+
+<sub>`mcp-pennylane` is an independent open source project (MIT). It is not published, endorsed or sponsored by Pennylane. Pennylane and Claude are trademarks of their respective owners, used here only to name the API and the assistant the project works with.</sub>
 
 </div>
 
@@ -88,12 +90,30 @@
 
 ## What is this?
 
-`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). About 74 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail — so the full 163-op surface stays usable without flooding the host's tool budget.
+`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). It reads your books and, when the token scope allows it, writes to them. It creates, updates, finalizes and sends customer invoices, creates and sends quotes, posts ledger entries, letters entry lines and uploads a receipt PDF. About 74 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail, so the full 163-op surface stays usable without flooding the host's tool budget.
 
-Drive your accounting from a chat: list and create customer invoices, reconcile bank transactions, query the ledger, generate FEC exports for your accountant, manage GoCardless and SEPA mandates, all from natural language.
+From a chat you can list and create customer invoices, reconcile bank transactions, query the ledger, upload a receipt, generate FEC exports for your accountant and manage GoCardless and SEPA mandates, all from natural language.
+
+## What about Pennylane's MCP?
+
+Pennylane ships [its own MCP server](https://help.pennylane.com/fr/articles/757740-connecter-votre-assistant-ia-au-mcp-pennylane) (page read on 20 October 2026), remote, connected through OAuth with your Pennylane login, with nothing to install. It starts read-only. On [the announcement page](https://www.pennylane.com/fr/blog/produit/mcp-pennylane) (updated on 13 October 2026, read on 20 October 2026), Pennylane writes (in French, our translation): "At this stage, your AI assistant can neither create, edit nor delete items in your Pennylane workspace. It can only view and retrieve them." Pennylane says it is working on write access and on the human validations that level of permission requires (our translation).
+
+`mcp-pennylane` goes through the Company API v2 with a token, and it writes:
+
+| | Pennylane's MCP | `mcp-pennylane` |
+|---|---|---|
+| View invoices, ledger entries, transactions | yes | yes |
+| Create and update items | no write access as of today | yes (invoices, quotes, customers, suppliers, ledger entries), when the token scope allows it |
+| Upload a receipt PDF ([File uploads](#file-uploads)) | no write access as of today | yes |
+| Access rights | the same rights as the signed-in user, tools can be enabled one by one | scope of the Pennylane token, read-only can be forced |
+| Connection | OAuth with your Pennylane login, remote server, nothing to install | API token, local or self-hosted binary |
+| Read-only mode | the only mode as of today | auto-detected from the token scope, or forced |
+
+The two work side by side in one client, Pennylane's server to look things up and `mcp-pennylane` when Claude has to write. Comparison made on 20 October 2026 from the two pages cited. Check Pennylane's site for the current state. `mcp-pennylane` is independent of Pennylane.
 
 ## Features
 
+- ✍️ **Read and write**: invoices and quotes, ledger entries, customers, suppliers, SEPA mandates, receipt PDF upload (multipart)
 - ✨ **All 163 Pennylane ops** — 74 essentials direct + `pennylane_search_tools` + `pennylane_execute` for the long tail
 - 🔒 **Read-only auto-detect** — probes `GET /me` at startup, forces read-only when every token scope ends with `:readonly`
 - ⚡ **Two transports** — stdio for Claude Desktop, streamable HTTP for remote (`/mcp` + `/health`)
@@ -110,7 +130,8 @@ Drive your accounting from a chat: list and create customer invoices, reconcile 
 cargo install mcp-pennylane
 
 # 2. Generate a Pennylane API token in Settings → Connectivity → Developers
-#    Recommended scope: "Read only — retrieve data"
+#    To look things up only: "Read only — retrieve data"
+#    For Claude to write (invoices, ledger entries, receipts): a scope that allows writing
 export PENNYLANE_API_KEY="your-pennylane-token"
 
 # 3. Wire it into Claude Desktop, then restart Claude
@@ -129,6 +150,8 @@ EOF
 That's it — Claude now sees `getMe`, `getCustomers`, `pennylane_search_tools`, and 70+ other tools.
 
 > 💡 The server probes `GET /me` at startup. If your token is read-only, it auto-enables read-only mode (banner reads `mode=readonly (auto)`). Set `PENNYLANE_READONLY=true` to skip the probe and force read-only deterministically (recommended for CI).
+
+> ⚠️ What Claude writes into Pennylane is real. Start with a read-only token, then open up writing once you have seen what it does. `PENNYLANE_ENV=sandbox` is only a visual cue and has no effect on calls (see [Sandbox](#sandbox)).
 
 ## Configuration
 
@@ -159,13 +182,15 @@ Every env var has a matching `--flag` (e.g. `--token`, `--base-url`, `--readonly
 
 ## Usage
 
-Three end-to-end workflows you can drive from Claude:
+Four end-to-end workflows you can drive from Claude:
 
 **1. List recent unpaid invoices.** *"Show my unpaid customer invoices from the last 30 days."* → Claude calls `getCustomerInvoices` with a filter like `[{"field":"status","operator":"eq","value":"unpaid"},{"field":"date","operator":"gteq","value":"2026-04-06"}]`, walks the `next_cursor` pagination if needed.
 
 **2. Reconcile a bank transaction.** *"Find an unmatched €1,250 transaction this week and link it to the right invoice."* → Claude calls `getTransactions`, then `pennylane_search_tools(query="match")` to discover the matching operation, then `pennylane_execute(tool_name="postCustomerInvoiceMatchedTransactions", params={"id": <invoice_id>, "transaction_id": <tx_id>})`.
 
 **3. Generate a FEC export for Q1 2026.** *"Generate the FEC for January through March 2026 and tell me when it's ready."* → Claude calls `exportFec` with `{"start_date":"2026-01-01","end_date":"2026-03-31"}`, polls `getFecExport` until status flips to `done`, returns the download URL.
+
+**4. Upload a receipt.** *"Upload `octobre.pdf` from my Invoices folder to Pennylane."* → Claude calls `postFileAttachments` with the file's absolute path and gets back the `id` and `url` of the uploaded document (see [File uploads](#file-uploads)). The token scope must allow writing.
 
 ## Read-only mode
 
