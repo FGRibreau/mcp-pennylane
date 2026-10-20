@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-20
+
 ### Added
 
 - File uploads: the eight `multipart/form-data` operations (`postFileAttachments`, `postLedgerAttachments`, `createSupplierInvoiceEInvoiceImport`, `createCustomerInvoiceEInvoiceImport`, `createEInvoiceImport`, `postCustomerInvoiceAppendices`, `postQuoteAppendices`, `postCommercialDocumentAppendices`). `file` is the absolute path of a file on the machine running the server; the response carries an `_mcp_pennylane.uploaded_file` audit entry (real path, name, size, type).

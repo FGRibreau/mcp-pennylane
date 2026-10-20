@@ -260,7 +260,7 @@ The Pennylane API key still lives in `PENNYLANE_API_KEY` server-side — the ser
 
 `PENNYLANE_ENV=sandbox` is a **visual hint only** — Pennylane uses the same base URL for sandbox and production. The value is surfaced in three places to prevent the classic "I just modified production while testing" mistake:
 
-1. The startup banner on stderr: `mcp-pennylane v0.1.0 — Pennylane Company API v2.0 — env=sandbox — mode=readonly (auto)`.
+1. The startup banner on stderr: `mcp-pennylane v0.2.0 — Pennylane Company API v2.0 — env=sandbox — mode=readonly (auto)`.
 2. The `getMe` response, augmented with `_mcp_pennylane = { env, server_version, spec_version, readonly, readonly_source, api_2026 }`.
 3. The MCP `serverInfo.instructions` string.
 
