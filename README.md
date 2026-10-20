@@ -287,7 +287,7 @@ Le transport n'accepte que les requêtes dont l'en-tête `Host` est un nom de bo
 
 `PENNYLANE_ENV=sandbox` est un **repère visuel uniquement** — Pennylane utilise la même URL de base pour le sandbox et la production. La valeur est exposée à trois endroits pour éviter le classique « oups, j'ai modifié la prod » :
 
-1. La bannière de démarrage sur stderr : `mcp-pennylane v0.2.0 — Pennylane Company API v2.0 — env=sandbox — mode=readonly (auto)`.
+1. La bannière de démarrage sur stderr : `mcp-pennylane v0.3.0 — Pennylane Company API v2.0 — env=sandbox — mode=readonly (auto)`.
 2. La réponse `getMe`, augmentée de `_mcp_pennylane = { env, server_version, spec_version, readonly, readonly_source, api_2026 }`.
 3. Le champ `serverInfo.instructions` du protocole MCP.
 
