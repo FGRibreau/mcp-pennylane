@@ -1,13 +1,13 @@
 use anyhow::Result;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    CallToolRequestParam, CallToolResult, Content, Implementation, ListToolsResult,
-    PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
+    ListToolsResult, PaginatedRequestParams, ProtocolVersion, ServerCapabilities, ServerConfig,
+    Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::ErrorData;
 use serde_json::{json, Map, Value};
-use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tracing::info;
@@ -84,50 +84,31 @@ impl PennylaneService {
             Value::Object(map) => map,
             _ => Map::new(),
         };
-        Tool {
-            name: Cow::Borrowed(t.name),
-            description: Some(Cow::Owned(format!("[{}] {}", t.method, t.description))),
-            input_schema: Arc::new(schema_obj),
-            annotations: None,
-            icons: None,
-            meta: None,
-            output_schema: None,
-            title: None,
-        }
+        Tool::new(
+            t.name,
+            format!("[{}] {}", t.method, t.description),
+            Arc::new(schema_obj),
+        )
     }
 
     fn meta_search(&self) -> Tool {
-        Tool {
-            name: Cow::Borrowed(META_SEARCH_TOOL),
-            description: Some(Cow::Borrowed(
-                "Search the full Pennylane API surface (~163 ops). \
-                 Returns matching operationIds with their input schema. \
-                 Pair with `pennylane_execute` to invoke a result.",
-            )),
-            input_schema: Arc::new(value_to_object(search_tool_schema())),
-            annotations: None,
-            icons: None,
-            meta: None,
-            output_schema: None,
-            title: None,
-        }
+        Tool::new(
+            META_SEARCH_TOOL,
+            "Search the full Pennylane API surface (~163 ops). \
+             Returns matching operationIds with their input schema. \
+             Pair with `pennylane_execute` to invoke a result.",
+            Arc::new(value_to_object(search_tool_schema())),
+        )
     }
 
     fn meta_execute(&self) -> Tool {
-        Tool {
-            name: Cow::Borrowed(META_EXECUTE_TOOL),
-            description: Some(Cow::Borrowed(
-                "Invoke any Pennylane operation by its operationId. \
-                 `params` is a flat object containing path params, query params, and body fields; \
-                 the dispatcher splits them based on the OpenAPI path template.",
-            )),
-            input_schema: Arc::new(value_to_object(execute_tool_schema())),
-            annotations: None,
-            icons: None,
-            meta: None,
-            output_schema: None,
-            title: None,
-        }
+        Tool::new(
+            META_EXECUTE_TOOL,
+            "Invoke any Pennylane operation by its operationId. \
+             `params` is a flat object containing path params, query params, and body fields; \
+             the dispatcher splits them based on the OpenAPI path template.",
+            Arc::new(value_to_object(execute_tool_schema())),
+        )
     }
 
     async fn dispatch(&self, tool_name: &str, params: &Map<String, Value>) -> Value {
@@ -232,43 +213,35 @@ fn augment_upload(response: &mut Value, uploaded_file: Value) {
 }
 
 impl ServerHandler for PennylaneService {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "mcp-pennylane".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                icons: None,
-                title: None,
-                website_url: None,
-            },
-            instructions: Some(self.instructions()),
-        }
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_protocol_version(ProtocolVersion::V_2024_11_05)
+            .with_server_info(Implementation::new(
+                "mcp-pennylane",
+                env!("CARGO_PKG_VERSION"),
+            ))
+            .with_instructions(self.instructions())
     }
 
     async fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let mut tools: Vec<Tool> = self.visible.iter().map(|t| self.tool_to_mcp(t)).collect();
         tools.push(self.meta_search());
         tools.push(self.meta_execute());
-        Ok(ListToolsResult {
-            tools,
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     async fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         _ctx: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResponse, ErrorData> {
         let name = request.name.as_ref();
-        let args: Map<String, Value> = request.arguments.unwrap_or_default().into_iter().collect();
+        let no_arguments = Map::new();
+        let args = request.arguments.as_ref().unwrap_or(&no_arguments);
 
         let value = match name {
             n if n == META_SEARCH_TOOL => {
@@ -293,18 +266,19 @@ impl ServerHandler for PennylaneService {
                     .unwrap_or_default();
                 self.dispatch(tool_name, &params).await
             }
-            other => self.dispatch(other, &args).await,
+            other => self.dispatch(other, args).await,
         };
 
         let body = serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
         let is_error = value.get("error").and_then(|e| e.as_object()).is_some();
 
-        Ok(CallToolResult {
-            content: vec![Content::text(body)],
-            is_error: Some(is_error),
-            meta: None,
-            structured_content: None,
-        })
+        let content = vec![ContentBlock::text(body)];
+        let tool_result = if is_error {
+            CallToolResult::error(content)
+        } else {
+            CallToolResult::success(content)
+        };
+        Ok(tool_result.into())
     }
 }
 

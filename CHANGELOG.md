@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - README (French and English) and crate description now present the server as reading and writing Pennylane (invoices, quotes, ledger entries, receipt PDFs), with a dated comparison to Pennylane's own read-only MCP, a non-affiliation notice and a warning that writes are real.
 
+### Security
+
+- `rmcp` 0.12 → 3.6: fixes GHSA-89vp-x53w-74fx (DNS rebinding on the streamable HTTP transport: a request whose `Host` header is not a loopback name now gets a 403), GHSA-9pj6-vhgr-3mwh (unauthenticated session-table leak), GHSA-33f5-2c5q-wgwj, GHSA-c9xm-49cp-xcr9 and GHSA-9g45-5xwm-f3wc.
+- Transitive `quinn-proto` 0.11.14 → 0.11.19 (GHSA-4w2j-m93h-cj5j) and `rustls` 0.23.40 → 0.23.46 (GHSA-2mjx-qc3c-rqvc).
+
 ## [0.2.0] - 2026-10-20
 
 ### Added

@@ -281,6 +281,8 @@ The Pennylane API key still lives in `PENNYLANE_API_KEY` server-side — the ser
 
 **Only expose this transport beyond `127.0.0.1` behind a reverse proxy that authenticates.** Since file uploads exist, an unauthenticated call can make the server read one of its own files (a PDF or an image) and send it to the Pennylane account (see [File uploads](#file-uploads)).
 
+The transport only accepts requests whose `Host` header is a loopback name (`localhost`, `127.0.0.1`, `::1`), as a defence against DNS rebinding; any other `Host` gets a 403. A reverse proxy must therefore forward a loopback `Host` (nginx: `proxy_set_header Host 127.0.0.1;`, Caddy: `header_up Host 127.0.0.1`).
+
 ## Sandbox
 
 `PENNYLANE_ENV=sandbox` is a **visual hint only** — Pennylane uses the same base URL for sandbox and production. The value is surfaced in three places to prevent the classic "I just modified production while testing" mistake:

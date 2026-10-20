@@ -281,6 +281,8 @@ Le token Pennylane reste dans `PENNYLANE_API_KEY` côté serveur — l'instance 
 
 **N'exposez ce transport hors de `127.0.0.1` que derrière un reverse proxy qui authentifie.** Depuis l'envoi de fichiers, un appel non authentifié peut faire lire au serveur l'un de ses propres fichiers (PDF ou image) et l'envoyer dans le dossier Pennylane (voir [Envoi de fichiers](#envoi-de-fichiers)).
 
+Le transport n'accepte que les requêtes dont l'en-tête `Host` est un nom de boucle locale (`localhost`, `127.0.0.1`, `::1`), par défense contre le DNS rebinding ; tout autre `Host` reçoit un 403. Un reverse proxy doit donc transmettre un `Host` de boucle locale (nginx : `proxy_set_header Host 127.0.0.1;`, Caddy : `header_up Host 127.0.0.1`).
+
 ## Sandbox
 
 `PENNYLANE_ENV=sandbox` est un **repère visuel uniquement** — Pennylane utilise la même URL de base pour le sandbox et la production. La valeur est exposée à trois endroits pour éviter le classique « oups, j'ai modifié la prod » :

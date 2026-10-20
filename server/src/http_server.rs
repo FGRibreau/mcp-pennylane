@@ -28,11 +28,10 @@ pub async fn serve(service: PennylaneService, host: &str, port: u16) -> anyhow::
     let mcp_service = StreamableHttpService::new(
         move || Ok(factory_service.clone()),
         Arc::new(LocalSessionManager::default()),
-        StreamableHttpServerConfig {
-            sse_keep_alive: Some(KEEPALIVE_INTERVAL),
-            stateful_mode: true,
-            cancellation_token: cancel.clone(),
-        },
+        StreamableHttpServerConfig::default()
+            .with_sse_keep_alive(Some(KEEPALIVE_INTERVAL))
+            .with_legacy_session_mode(true)
+            .with_cancellation_token(cancel.clone()),
     );
 
     let app = Router::new()
