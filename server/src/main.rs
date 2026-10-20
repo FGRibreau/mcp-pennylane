@@ -44,6 +44,7 @@ async fn main() -> Result<()> {
         readonly_source = %cfg.readonly_source,
         api_2026 = cfg.api_2026,
         base_url = %cfg.base_url,
+        upload_dirs = ?cfg.upload_dirs,
         "starting mcp-pennylane"
     );
 

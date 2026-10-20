@@ -5,6 +5,7 @@ pub mod http_server;
 pub mod redact;
 pub mod server;
 pub mod tools;
+pub mod upload;
 
 pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));

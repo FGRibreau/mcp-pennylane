@@ -88,13 +88,13 @@
 
 ## C'est quoi ?
 
-`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Environ 73 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne — la totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
+`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Environ 74 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne — la totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
 
 Pilotez votre compta depuis un chat : lister et créer des factures clients, rapprocher des transactions bancaires, interroger le grand livre, générer les exports FEC pour votre expert-comptable, gérer les mandats GoCardless et SEPA — le tout en langage naturel.
 
 ## Fonctionnalités
 
-- ✨ **Toutes les 163 opérations Pennylane** — 73 essentielles directement + `pennylane_search_tools` + `pennylane_execute` pour la longue traîne
+- ✨ **Toutes les 163 opérations Pennylane** — 74 essentielles directement + `pennylane_search_tools` + `pennylane_execute` pour la longue traîne
 - 🔒 **Auto-détection du mode lecture seule** — interroge `GET /me` au démarrage, force le readonly si chaque scope du token finit par `:readonly`
 - ⚡ **Deux transports** — stdio pour Claude Desktop, HTTP streamable pour le distant (`/mcp` + `/health`)
 - ⚙️ **Codegen via OpenAPI** — `build.rs` parse la spec vendorisée, fail-fast si la whitelist dérive
@@ -141,12 +141,13 @@ C'est tout — Claude voit maintenant `getMe`, `getCustomers`, `pennylane_search
 | `PENNYLANE_READONLY` | *(auto-détecté)* | `true` / `false` pour court-circuiter la sonde `/me` |
 | `PENNYLANE_ENV` | `production` | `production` / `sandbox` — repère visuel dans la bannière et dans `getMe` |
 | `PENNYLANE_API_2026` | `false` | Envoie l'en-tête `X-Use-2026-API-Changes: true` (phase preview) |
+| `PENNYLANE_UPLOAD_DIRS` | *(aucune restriction)* | Dossiers d'où un fichier peut être envoyé, séparés par `:` (`;` sous Windows). Voir [Envoi de fichiers](#envoi-de-fichiers) |
 | `MCP_PENNYLANE_TRANSPORT` | `stdio` | `stdio` ou `http` |
 | `RUST_LOG` | `info` | Filtre standard `tracing-subscriber` |
 
 ### Flags CLI
 
-Chaque variable d'environnement a un `--flag` équivalent (`--token`, `--base-url`, `--readonly`, `--env`, `--api-2026`, `--transport`, `--host`, `--port`, `--log-level`). Lancez `mcp-pennylane --help` pour la liste complète.
+Chaque variable d'environnement a un `--flag` équivalent (`--token`, `--base-url`, `--readonly`, `--env`, `--api-2026`, `--transport`, `--host`, `--port`, `--log-level`, `--upload-dirs`). Lancez `mcp-pennylane --help` pour la liste complète.
 
 ## Installation
 
@@ -184,6 +185,57 @@ mcp-pennylane
 
 Le scope du token Pennylane est le radio bouton à la création du token dans **Paramètres → Connectivité → Développeurs**. Une couche protège contre un serveur mal configuré, l'autre contre un token mal configuré.
 
+## Envoi de fichiers
+
+Huit opérations de l'API Pennylane exigent `multipart/form-data` : `postFileAttachments` (dépose une pièce et renvoie son `id` et son `url`, le `file_attachment_id` à passer à `importSupplierInvoice`), `createSupplierInvoiceEInvoiceImport` (outil direct), puis, via `pennylane_execute`, `postLedgerAttachments`, `createCustomerInvoiceEInvoiceImport`, `createEInvoiceImport`, `postCustomerInvoiceAppendices`, `postQuoteAppendices` et `postCommercialDocumentAppendices`.
+
+Le champ `file` est le **chemin absolu d'un fichier de la machine qui exécute le serveur** : c'est le serveur qui lit le fichier, pas le client. Avec le transport HTTP, ce n'est donc pas la machine du client MCP.
+
+```json
+{
+  "tool_name": "postFileAttachments",
+  "params": { "file": "/Users/moi/Factures/octobre.pdf", "filename": "Facture octobre 2026.pdf" }
+}
+```
+
+La réponse est le JSON de Pennylane tel quel, plus une clé `_mcp_pennylane.uploaded_file` (chemin réel lu, nom, taille, type) qui montre à la personne derrière l'agent quel fichier local est parti.
+
+### Contrôles avant l'envoi
+
+Ils s'exécutent en local, sans réseau, dans cet ordre. Un fichier qui en échoue un n'est jamais envoyé.
+
+- le chemin est absolu : `~` et les chemins relatifs sont refusés ;
+- le chemin est sous un dossier de `PENNYLANE_UPLOAD_DIRS` quand cette variable existe ;
+- les liens symboliques sont résolus avant tout contrôle : le dossier, la taille et le type sont jugés sur le fichier réel ;
+- le fichier est ordinaire (ni dossier ni périphérique) ;
+- il pèse au plus 100 Mo, mesuré sur le fichier ouvert, la lecture s'arrêtant au plafond : un fichier qui grossit pendant la lecture est refusé ;
+- son type (PDF, PNG, JPEG, TIFF, BMP, GIF) est lu sur ses octets, jamais sur l'extension : une clé SSH ou un `.env` renommé en `.pdf` est refusé ;
+- `filename` fait au plus 255 caractères, sans caractère de contrôle, y compris quand il vient du nom du fichier local.
+
+Les champs inconnus, les champs requis et leurs valeurs permises sont aussi vérifiés avant que le fichier soit lu.
+
+La lecture du fichier local est limitée à 30 s (fichier encore en téléchargement depuis un cloud, montage réseau qui ne répond pas) et le serveur traite au plus 4 envois à la fois, soit 400 Mo de mémoire au pire : un cinquième attend un créneau 30 s au plus, puis reçoit l'erreur `UPLOADS_BUSY`.
+
+### Restreindre les dossiers : `PENNYLANE_UPLOAD_DIRS`
+
+```bash
+export PENNYLANE_UPLOAD_DIRS="$HOME/Factures:$HOME/Downloads"
+```
+
+Liste de dossiers absolus séparés par `:` (`;` sous Windows), au plus 32, résolus une fois au démarrage. Un dossier absent, relatif ou qui n'est pas un dossier, ou une variable définie mais vide, empêche le démarrage. Variable absente : aucun dossier imposé.
+
+**Posez-la dès qu'un agent lit des mails ou d'autres contenus non fiables.** Une consigne cachée dans un message peut lui faire désigner n'importe quel fichier lisible (contrat, bulletin de paie) ; le contrôle des octets ne l'arrête pas si c'est un PDF. Le fichier atterrirait dans le dossier Pennylane que le cabinet comptable consulte.
+
+### Un envoi n'est pas idempotent
+
+Renvoyer le même fichier peut créer une seconde pièce. Réutilisez le `file_attachment_id` reçu au lieu de renvoyer. Après une erreur réseau, `NETWORK_ERROR` précise que le fichier a peut-être été reçu : cherchez la pièce avant de renvoyer. Le délai d'un envoi est de 60 s plus 1 s par Mo, pour éviter qu'un envoi réussi côté Pennylane mais lent soit pris pour un échec. Un 429 est rejoué une fois, sans risque de doublon puisque Pennylane a refusé la requête.
+
+Une erreur 403 sur ces opérations cite les scopes requis (`file_attachments:all` pour `postFileAttachments`) ; `getMe` montre ceux du token. Le mode lecture seule les refuse toutes.
+
+### Imports Factur-X
+
+`invoice_options` est envoyé en partie JSON (`application/json`), comme la spec OpenAPI le décrit. **Ce format n'a pas été vérifié en réel contre Pennylane.** Le serveur contrôle le type de fichier mais pas que le PDF soit un Factur-X valide : lisez un 4xx au premier import comme une réponse de Pennylane à examiner.
+
 ## Logs et confidentialité
 
 - Les logs sortent **uniquement sur stderr** — jamais sur stdout, ce qui corromprait le framing MCP du transport stdio.
@@ -201,6 +253,8 @@ mcp-pennylane --transport http --host 127.0.0.1 --port 8000
 ```
 
 Le token Pennylane reste dans `PENNYLANE_API_KEY` côté serveur — l'instance est mono-tenant par processus. **L'authentification entre le client MCP et ce serveur est volontairement absente.** Bindez sur `127.0.0.1` et placez un reverse proxy devant pour toute exposition non locale (Cloudflare Access, Authelia, Caddy basic-auth, etc.). Un serveur OSS standalone ne doit pas figer d'opinions sur l'auth externe.
+
+**N'exposez ce transport hors de `127.0.0.1` que derrière un reverse proxy qui authentifie.** Depuis l'envoi de fichiers, un appel non authentifié peut faire lire au serveur l'un de ses propres fichiers (PDF ou image) et l'envoyer dans le dossier Pennylane (voir [Envoi de fichiers](#envoi-de-fichiers)).
 
 ## Sandbox
 
@@ -222,7 +276,7 @@ Pennylane déploie des breaking changes sur son Company API le **8 avril 2026**.
 
 ## Catalogue d'outils
 
-Environ 73 outils essentiels sont exposés directement : clients, fournisseurs, factures clients + fournisseurs, produits, devis, banque, journaux, comptes/écritures/lignes du grand livre, balance de vérification, exercices fiscaux, catégories analytiques, exports FEC, pièces jointes, changelogs, mandats GoCardless et SEPA, `getMe`. La totalité des ~163 opérations reste accessible via les méta-outils.
+Environ 74 outils essentiels sont exposés directement : clients, fournisseurs, factures clients + fournisseurs, produits, devis, banque, journaux, comptes/écritures/lignes du grand livre, balance de vérification, exercices fiscaux, catégories analytiques, exports FEC, pièces jointes, changelogs, mandats GoCardless et SEPA, `getMe`. La totalité des ~163 opérations reste accessible via les méta-outils.
 
 Les noms des outils correspondent à l'`operationId` Pennylane à l'identique (par ex. `getCustomerInvoices`, `postLedgerEntries`), pour grepper proprement contre la spec OpenAPI officielle. La liste curée vit dans la [constante `ESSENTIALS` de `server/build.rs`](./server/build.rs).
 
@@ -247,6 +301,9 @@ cargo test --workspace
 
 # Tests d'intégration contre un sandbox Pennylane (lecture seule)
 PENNYLANE_API_KEY=… PENNYLANE_READONLY=true cargo test --workspace --features integration-tests
+
+# Sonde d'envoi réel (un seul upload, ignoré par défaut ; token avec le scope file_attachments:all)
+PENNYLANE_API_KEY=… cargo test -p mcp-pennylane --features integration-tests --test integration_upload_probe -- --ignored
 ```
 
 Une GitHub Action hebdomadaire lance `cargo run -p refresh-openapi` chaque lundi à 06h00 UTC et ouvre une PR si la spec upstream a dérivé. La CI sur la PR vérifie que toutes les opérations essentielles sont toujours présentes (`build.rs` panique si une op renommée/retirée casse le contrat) ; mergez quand le vert est là.

@@ -1,6 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use std::fmt;
+use std::path::PathBuf;
+
+use crate::upload::parse_allowed_dirs;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -50,6 +53,12 @@ pub struct Cli {
     /// Override the tracing env-filter (e.g. `info`, `mcp_pennylane=debug`).
     #[arg(long)]
     pub log_level: Option<String>,
+
+    /// Directories uploads may be read from.
+    /// Path list: `:` on Unix, `;` on Windows.
+    /// Unset allows any directory.
+    #[arg(long, env = "PENNYLANE_UPLOAD_DIRS")]
+    pub upload_dirs: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +110,8 @@ pub struct Config {
     pub transport: Transport,
     pub http_host: String,
     pub http_port: u16,
+    /// Resolved directories uploads are confined to; empty = unrestricted.
+    pub upload_dirs: Vec<PathBuf>,
 }
 
 impl Config {
@@ -143,6 +154,11 @@ impl Config {
             None => (false, ReadonlySource::AutoDetected),
         };
 
+        let upload_dirs = match cli.upload_dirs.as_deref() {
+            Some(raw) => parse_allowed_dirs(raw).context("invalid PENNYLANE_UPLOAD_DIRS")?,
+            None => Vec::new(),
+        };
+
         Ok(Self {
             token,
             base_url: cli.base_url.trim_end_matches('/').to_string(),
@@ -153,6 +169,7 @@ impl Config {
             transport,
             http_host: cli.host,
             http_port: cli.port,
+            upload_dirs,
         })
     }
 
