@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- File uploads: the eight `multipart/form-data` operations (`postFileAttachments`, `postLedgerAttachments`, `createSupplierInvoiceEInvoiceImport`, `createCustomerInvoiceEInvoiceImport`, `createEInvoiceImport`, `postCustomerInvoiceAppendices`, `postQuoteAppendices`, `postCommercialDocumentAppendices`). `file` is the absolute path of a file on the machine running the server; the response carries an `_mcp_pennylane.uploaded_file` audit entry (real path, name, size, type).
+- Checks run locally before any byte is sent: absolute path, optional directory confinement, symbolic links resolved before judging, regular file, 100 MB ceiling measured on the open file with a bounded read, file type read from the bytes (PDF, PNG, JPEG, TIFF, BMP, GIF), `filename` of at most 255 characters without control characters.
+- `PENNYLANE_UPLOAD_DIRS` / `--upload-dirs`: optional list of directories uploads are confined to (`:`-separated, `;` on Windows, at most 32, resolved at startup). Unset keeps every directory allowed; set it whenever an agent reads untrusted content such as mail.
+- `createSupplierInvoiceEInvoiceImport` joins the direct tools: 74 essentials.
+- A 403 on a multipart operation lists the scopes it requires; a network failure during an upload says the file may have been received, so the caller checks before sending it again.
+- Upload deadline of 60 s plus 1 s per MB instead of a fixed 60 s.
+
+### Fixed
+
+- `postFileAttachments` and `postLedgerAttachments` were listed as tools but could not be used: their schema had no `file` field and the client only sent JSON. The multipart operations are now usable.
+
+### Documentation
+
+- README: file uploads, an upload is not idempotent (reuse the `file_attachment_id`), `invoice_options` of the Factur-X imports is not verified against the real API, and the HTTP transport has no authentication and must not be exposed beyond `127.0.0.1` except behind a reverse proxy that authenticates.
+
 ## [0.1.0] - 2026-05-08
 
 ### Added

@@ -88,13 +88,13 @@
 
 ## What is this?
 
-`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). About 73 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail — so the full 163-op surface stays usable without flooding the host's tool budget.
+`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). About 74 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail — so the full 163-op surface stays usable without flooding the host's tool budget.
 
 Drive your accounting from a chat: list and create customer invoices, reconcile bank transactions, query the ledger, generate FEC exports for your accountant, manage GoCardless and SEPA mandates, all from natural language.
 
 ## Features
 
-- ✨ **All 163 Pennylane ops** — 73 essentials direct + `pennylane_search_tools` + `pennylane_execute` for the long tail
+- ✨ **All 163 Pennylane ops** — 74 essentials direct + `pennylane_search_tools` + `pennylane_execute` for the long tail
 - 🔒 **Read-only auto-detect** — probes `GET /me` at startup, forces read-only when every token scope ends with `:readonly`
 - ⚡ **Two transports** — stdio for Claude Desktop, streamable HTTP for remote (`/mcp` + `/health`)
 - ⚙️ **OpenAPI-driven codegen** — `build.rs` parses the vendored spec, fail-fast on whitelist drift
@@ -141,12 +141,13 @@ That's it — Claude now sees `getMe`, `getCustomers`, `pennylane_search_tools`,
 | `PENNYLANE_READONLY` | *(auto-detected)* | `true` / `false` to skip the `/me` scope probe |
 | `PENNYLANE_ENV` | `production` | `production` / `sandbox` — visual cue in banner and `getMe` |
 | `PENNYLANE_API_2026` | `false` | Send `X-Use-2026-API-Changes: true` (preview phase) |
+| `PENNYLANE_UPLOAD_DIRS` | *(no restriction)* | Directories a file may be uploaded from, separated by `:` (`;` on Windows). See [File uploads](#file-uploads) |
 | `MCP_PENNYLANE_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `RUST_LOG` | `info` | Standard `tracing-subscriber` env filter |
 
 ### CLI flags
 
-Every env var has a matching `--flag` (e.g. `--token`, `--base-url`, `--readonly`, `--env`, `--api-2026`, `--transport`, `--host`, `--port`, `--log-level`). Run `mcp-pennylane --help` for the full list.
+Every env var has a matching `--flag` (e.g. `--token`, `--base-url`, `--readonly`, `--env`, `--api-2026`, `--transport`, `--host`, `--port`, `--log-level`, `--upload-dirs`). Run `mcp-pennylane --help` for the full list.
 
 ## Install
 
@@ -184,6 +185,55 @@ mcp-pennylane
 
 The Pennylane token scope is the radio button at token creation in **Settings → Connectivity → Developers**. One layer protects against a misconfigured server, the other against a misconfigured token.
 
+## File uploads
+
+Eight operations of the Pennylane API require `multipart/form-data`: `postFileAttachments` (uploads a document and returns its `id` and `url`, the `file_attachment_id` to pass to `importSupplierInvoice`), `createSupplierInvoiceEInvoiceImport` (direct tool), and, through `pennylane_execute`, `postLedgerAttachments`, `createCustomerInvoiceEInvoiceImport`, `createEInvoiceImport`, `postCustomerInvoiceAppendices`, `postQuoteAppendices` and `postCommercialDocumentAppendices`.
+
+The `file` field is the **absolute path of a file on the machine running the server**: the server reads the file itself, the client does not send it. With the HTTP transport that is not the MCP client's machine.
+
+```json
+{
+  "tool_name": "postFileAttachments",
+  "params": { "file": "/Users/me/Invoices/october.pdf", "filename": "Invoice October 2026.pdf" }
+}
+```
+
+The response is Pennylane's JSON as is, plus an `_mcp_pennylane.uploaded_file` key (real path read, name, size, type) so the person behind the agent can see which local file left the machine.
+
+### Checks before anything is sent
+
+They run locally, without the network, in this order. A file that fails one is never sent.
+
+- the path is absolute: `~` and relative paths are refused;
+- the path is under a directory of `PENNYLANE_UPLOAD_DIRS` when that variable is set;
+- symbolic links are resolved before any check: directory, size and type are judged on the real file;
+- the file is a regular file (not a directory or a device);
+- it is at most 100 MB, measured on the open file, and the read stops at the ceiling: a file that grows while being read is refused;
+- its type (PDF, PNG, JPEG, TIFF, BMP, GIF) is read from its bytes, never from the extension: an SSH key or a `.env` renamed `.pdf` is refused;
+- `filename` is at most 255 characters with no control character, including when it comes from the local file name.
+
+Unknown fields, required fields and their allowed values are also checked before the file is read.
+
+### Confining directories: `PENNYLANE_UPLOAD_DIRS`
+
+```bash
+export PENNYLANE_UPLOAD_DIRS="$HOME/Invoices:$HOME/Downloads"
+```
+
+A list of absolute directories separated by `:` (`;` on Windows), at most 32, resolved once at startup. A missing, relative or non-directory entry, or a variable that is set but empty, stops the server from starting. Variable unset: no directory is enforced.
+
+**Set it whenever an agent reads mail or other untrusted content.** An instruction hidden in a message can make it point at any readable file (a contract, a payslip); the byte check does not stop it when that file is a PDF. The file would land in the Pennylane account that the accounting firm reads.
+
+### An upload is not idempotent
+
+Sending the same file again can create a second document. Reuse the `file_attachment_id` you received instead of sending again. After a network error, `NETWORK_ERROR` says the file may have been received: look for the document before sending again. The deadline of an upload is 60 s plus 1 s per MB, so an upload that succeeded on Pennylane's side but was slow is not mistaken for a failure. A 429 is retried once, with no risk of a duplicate since Pennylane refused the request.
+
+A 403 on these operations lists the required scopes (`file_attachments:all` for `postFileAttachments`); `getMe` shows the token's. Read-only mode refuses all of them.
+
+### Factur-X imports
+
+`invoice_options` is sent as a JSON part (`application/json`), as the OpenAPI spec describes it. **This format has not been verified against the real Pennylane.** The server checks the file type, not that the PDF is a valid Factur-X: read a 4xx on the first import as an answer from Pennylane to examine.
+
 ## Logging & privacy
 
 - Logs go to **stderr only** — never stdout, which would corrupt the MCP framing on the stdio transport.
@@ -201,6 +251,8 @@ mcp-pennylane --transport http --host 127.0.0.1 --port 8000
 ```
 
 The Pennylane API key still lives in `PENNYLANE_API_KEY` server-side — the server is single-tenant per process. **Authentication between the MCP client and this server is intentionally none.** Bind to `127.0.0.1` and put a reverse proxy in front of it for any non-local exposure (Cloudflare Access, Authelia, Caddy basic-auth, etc.). An OSS standalone server should not bake in opinions about external auth.
+
+**Only expose this transport beyond `127.0.0.1` behind a reverse proxy that authenticates.** Since file uploads exist, an unauthenticated call can make the server read one of its own files (a PDF or an image) and send it to the Pennylane account (see [File uploads](#file-uploads)).
 
 ## Sandbox
 
@@ -222,7 +274,7 @@ Pennylane is rolling out breaking changes to its Company API on **April 8, 2026*
 
 ## Tool catalog
 
-About 73 essentials are exposed directly: customers, suppliers, customer + supplier invoices, products, quotes, banking, journals, ledger accounts/entries/lines, trial balance, fiscal years, analytical categories, FEC exports, file attachments, changelogs, GoCardless and SEPA mandates, `getMe`. The full ~163 operations stay reachable through the meta-tools.
+About 74 essentials are exposed directly: customers, suppliers, customer + supplier invoices, products, quotes, banking, journals, ledger accounts/entries/lines, trial balance, fiscal years, analytical categories, FEC exports, file attachments, changelogs, GoCardless and SEPA mandates, `getMe`. The full ~163 operations stay reachable through the meta-tools.
 
 Tool names match the Pennylane `operationId` verbatim (e.g. `getCustomerInvoices`, `postLedgerEntries`), so they grep cleanly against the official OpenAPI spec. The full curated list lives in the [`ESSENTIALS` constant in `server/build.rs`](./server/build.rs).
 
@@ -247,6 +299,9 @@ cargo test --workspace
 
 # Run the integration tests against a Pennylane sandbox (read-only)
 PENNYLANE_API_KEY=… PENNYLANE_READONLY=true cargo test --workspace --features integration-tests
+
+# Real upload probe (one upload, ignored by default; token with the file_attachments:all scope)
+PENNYLANE_API_KEY=… cargo test -p mcp-pennylane --features integration-tests --test integration_upload_probe -- --ignored
 ```
 
 A weekly GitHub Action runs `cargo run -p refresh-openapi` every Monday at 06:00 UTC and opens a PR if the upstream spec drifted. CI on the PR validates that every essential operation is still present (`build.rs` panics if a renamed/removed op breaks the contract); merge once green.
