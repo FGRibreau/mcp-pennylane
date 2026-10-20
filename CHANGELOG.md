@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
 ### Changed
 
+- Behaviour change on the HTTP transport (`--transport http`): a request whose `Host` header is not a loopback name (`localhost`, `127.0.0.1`, `::1`) now gets a 403. A reverse proxy in front of the server must rewrite `Host` to `127.0.0.1` (nginx: `proxy_set_header Host 127.0.0.1;`, Caddy: `header_up Host 127.0.0.1`); see the README.
 - README (French and English) and crate description now present the server as reading and writing Pennylane (invoices, quotes, ledger entries, receipt PDFs), with a dated comparison to Pennylane's own read-only MCP, a non-affiliation notice and a warning that writes are real.
 - Minimum Rust version in the README badge is 1.88 (the 1.75 shown before was out of date; `cargo check --workspace --locked` passes on 1.88).
 
