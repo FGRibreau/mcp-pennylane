@@ -1,7 +1,6 @@
 //! JSON operations keep their schema and request body.
-//! Expectations were recorded before multipart support landed.
-//! They compile unchanged against that tree.
-//! Only the eight multipart operations may differ.
+//! Multipart support must not alter what they send.
+//! Only multipart operations are left out of the fingerprint.
 
 use serde_json::{json, Map, Value};
 
