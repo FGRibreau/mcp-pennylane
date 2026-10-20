@@ -17,7 +17,7 @@
 [![downloads](https://img.shields.io/crates/d/mcp-pennylane.svg)](https://crates.io/crates/mcp-pennylane)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml/badge.svg)](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://rust-lang.org)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-6366f1.svg)](https://modelcontextprotocol.io)
 
 <sub>`mcp-pennylane` est un projet open source indépendant (licence MIT). Il n'est ni édité, ni approuvé, ni sponsorisé par Pennylane. Pennylane et Claude sont des marques de leurs titulaires, citées pour désigner l'API et l'assistant avec lesquels le projet interopère.</sub>
@@ -280,6 +280,8 @@ mcp-pennylane --transport http --host 127.0.0.1 --port 8000
 Le token Pennylane reste dans `PENNYLANE_API_KEY` côté serveur — l'instance est mono-tenant par processus. **L'authentification entre le client MCP et ce serveur est volontairement absente.** Bindez sur `127.0.0.1` et placez un reverse proxy devant pour toute exposition non locale (Cloudflare Access, Authelia, Caddy basic-auth, etc.). Un serveur OSS standalone ne doit pas figer d'opinions sur l'auth externe.
 
 **N'exposez ce transport hors de `127.0.0.1` que derrière un reverse proxy qui authentifie.** Depuis l'envoi de fichiers, un appel non authentifié peut faire lire au serveur l'un de ses propres fichiers (PDF ou image) et l'envoyer dans le dossier Pennylane (voir [Envoi de fichiers](#envoi-de-fichiers)).
+
+Le transport n'accepte que les requêtes dont l'en-tête `Host` est un nom de boucle locale (`localhost`, `127.0.0.1`, `::1`), par défense contre le DNS rebinding ; tout autre `Host` reçoit un 403. Un reverse proxy doit donc transmettre un `Host` de boucle locale (nginx : `proxy_set_header Host 127.0.0.1;`, Caddy : `header_up Host 127.0.0.1`).
 
 ## Sandbox
 

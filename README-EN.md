@@ -17,7 +17,7 @@
 [![downloads](https://img.shields.io/crates/d/mcp-pennylane.svg)](https://crates.io/crates/mcp-pennylane)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml/badge.svg)](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://rust-lang.org)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-6366f1.svg)](https://modelcontextprotocol.io)
 
 <sub>`mcp-pennylane` is an independent open source project (MIT). It is not published, endorsed or sponsored by Pennylane. Pennylane and Claude are trademarks of their respective owners, used here only to name the API and the assistant the project works with.</sub>
@@ -280,6 +280,8 @@ mcp-pennylane --transport http --host 127.0.0.1 --port 8000
 The Pennylane API key still lives in `PENNYLANE_API_KEY` server-side — the server is single-tenant per process. **Authentication between the MCP client and this server is intentionally none.** Bind to `127.0.0.1` and put a reverse proxy in front of it for any non-local exposure (Cloudflare Access, Authelia, Caddy basic-auth, etc.). An OSS standalone server should not bake in opinions about external auth.
 
 **Only expose this transport beyond `127.0.0.1` behind a reverse proxy that authenticates.** Since file uploads exist, an unauthenticated call can make the server read one of its own files (a PDF or an image) and send it to the Pennylane account (see [File uploads](#file-uploads)).
+
+The transport only accepts requests whose `Host` header is a loopback name (`localhost`, `127.0.0.1`, `::1`), as a defence against DNS rebinding; any other `Host` gets a 403. A reverse proxy must therefore forward a loopback `Host` (nginx: `proxy_set_header Host 127.0.0.1;`, Caddy: `header_up Host 127.0.0.1`).
 
 ## Sandbox
 
