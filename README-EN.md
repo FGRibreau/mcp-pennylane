@@ -90,7 +90,7 @@
 
 ## What is this?
 
-`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). It reads your books and, when the token scope allows it, writes to them. It creates, updates, finalizes and sends customer invoices, creates and sends quotes, posts ledger entries, letters entry lines and uploads a receipt PDF. About 74 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail, so the full 163-op surface stays usable without flooding the host's tool budget.
+`mcp-pennylane` connects Claude (or any MCP host) to the [Pennylane Company API v2](https://pennylane.readme.io). It reads your books and, when the token scope allows it, writes to them. It creates, updates, finalizes and sends customer invoices, creates and sends quotes, posts ledger entries, letters entry lines and uploads a receipt PDF. About 73 hand-curated essentials are listed directly to the host, and two meta-tools (`pennylane_search_tools`, `pennylane_execute`) cover the long tail, so the full 163-op surface stays usable without flooding the host's tool budget.
 
 From a chat you can list and create customer invoices, reconcile bank transactions, query the ledger, upload a receipt, generate FEC exports for your accountant and manage GoCardless and SEPA mandates, all from natural language.
 
@@ -114,7 +114,7 @@ The two work side by side in one client, Pennylane's server to look things up an
 ## Features
 
 - ✍️ **Read and write**: invoices and quotes, ledger entries, customers, suppliers, SEPA mandates, receipt PDF upload (multipart)
-- ✨ **All 163 Pennylane ops** — 74 essentials direct + `pennylane_search_tools` + `pennylane_execute` for the long tail
+- ✨ **All 163 Pennylane ops** — 73 essentials direct + `pennylane_search_tools` + `pennylane_execute` for the long tail
 - 🔒 **Read-only auto-detect** — probes `GET /me` at startup, forces read-only when every token scope ends with `:readonly`
 - ⚡ **Two transports** — stdio for Claude Desktop, streamable HTTP for remote (`/mcp` + `/health`)
 - ⚙️ **OpenAPI-driven codegen** — `build.rs` parses the vendored spec, fail-fast on whitelist drift
@@ -301,7 +301,7 @@ Pennylane is rolling out breaking changes to its Company API on **April 8, 2026*
 
 ## Tool catalog
 
-About 74 essentials are exposed directly: customers, suppliers, customer + supplier invoices, products, quotes, banking, journals, ledger accounts/entries/lines, trial balance, fiscal years, analytical categories, FEC exports, file attachments, changelogs, GoCardless and SEPA mandates, `getMe`. The full ~163 operations stay reachable through the meta-tools.
+About 73 essentials are exposed directly: customers, suppliers, customer + supplier invoices, products, quotes, banking, journals, ledger accounts/entries/lines, trial balance, fiscal years, analytical categories, FEC exports, file attachments, changelogs, GoCardless and SEPA mandates, `getMe`. The full ~163 operations stay reachable through the meta-tools.
 
 Tool names match the Pennylane `operationId` verbatim (e.g. `getCustomerInvoices`, `postLedgerEntries`), so they grep cleanly against the official OpenAPI spec. The full curated list lives in the [`ESSENTIALS` constant in `server/build.rs`](./server/build.rs).
 
