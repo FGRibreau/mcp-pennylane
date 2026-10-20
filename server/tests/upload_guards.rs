@@ -9,13 +9,13 @@ use std::path::PathBuf;
 use mcp_pennylane::error::ClientError;
 use mcp_pennylane::upload::{
     check_filename, check_open_file, detect_content_type, load_file, parse_allowed_dirs,
-    read_bounded, UploadFile, MAX_UPLOAD_BYTES, MAX_UPLOAD_DIRS,
+    read_bounded, UploadFile, UploadLimits, MAX_UPLOAD_BYTES, MAX_UPLOAD_DIRS,
 };
 
 use common::{fixture, minimal_pdf, TempDir};
 
 async fn load(path: &str, allowed: &[PathBuf]) -> Result<UploadFile, ClientError> {
-    load_file("postFileAttachments", path, allowed, MAX_UPLOAD_BYTES).await
+    load_file("postFileAttachments", path, allowed, UploadLimits::DEFAULT).await
 }
 
 async fn load_path(path: &std::path::Path, allowed: &[PathBuf]) -> Result<UploadFile, ClientError> {
@@ -207,15 +207,18 @@ async fn file_above_the_limit_is_refused_without_being_read() {
 async fn file_exactly_at_the_limit_is_accepted_and_one_byte_more_is_not() {
     let dir = TempDir::new("limit");
     let mut bytes = minimal_pdf();
-    let limit = bytes.len() as u64;
+    let limits = UploadLimits {
+        max_bytes: bytes.len() as u64,
+        ..UploadLimits::DEFAULT
+    };
     let path = dir.write("juste.pdf", &bytes);
     let display = path.display().to_string();
-    accepted(load_file("postFileAttachments", &display, &[], limit).await);
+    accepted(load_file("postFileAttachments", &display, &[], limits).await);
 
     bytes.push(b'\n');
     let path = dir.write("trop.pdf", &bytes);
     let display = path.display().to_string();
-    let message = refusal(load_file("postFileAttachments", &display, &[], limit).await);
+    let message = refusal(load_file("postFileAttachments", &display, &[], limits).await);
     assert!(message.contains("the limit is"), "{message}");
 }
 

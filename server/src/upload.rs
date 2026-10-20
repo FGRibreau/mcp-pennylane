@@ -4,12 +4,15 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use bytes::Bytes;
 use serde_json::{json, Map, Value};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::client::{FormPart, MultipartBody};
 use crate::error::ClientError;
@@ -17,6 +20,12 @@ use crate::generated::GeneratedTool;
 
 /// Ceiling Pennylane documents for an uploaded file.
 pub const MAX_UPLOAD_BYTES: u64 = 100_000_000;
+/// Longest wait for a file to be read from disk.
+pub const READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// Uploads that may run at once, which bounds memory.
+pub const MAX_CONCURRENT_UPLOADS: usize = 4;
+/// Longest wait for a free upload slot.
+pub const PERMIT_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_UPLOAD_DIRS: usize = 32;
 const MAX_FILENAME_CHARS: usize = 255;
 const MAX_PATH_BYTES: usize = 4_096;
@@ -24,6 +33,29 @@ const MAX_FIELD_BYTES: usize = 1_048_576;
 const PDF_SIGNATURE_WINDOW: usize = 1_024;
 const SIGNATURE_PREVIEW_BYTES: usize = 8;
 const ACCEPTED_TYPES: &str = "PDF, PNG, JPEG, TIFF, BMP, GIF";
+const FILENAME_FIELD: &str = "filename";
+
+/// What is wrong with a form field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldProblem {
+    Missing,
+    NotAString,
+    NotAnObject,
+    NotAPath,
+}
+
+impl FieldProblem {
+    fn describe(self, name: &str) -> String {
+        match self {
+            FieldProblem::Missing => format!("missing required field `{name}`"),
+            FieldProblem::NotAString => format!("`{name}` must be a string"),
+            FieldProblem::NotAnObject => format!("`{name}` must be a JSON object"),
+            FieldProblem::NotAPath => {
+                format!("`{name}` must be the absolute path of a local file")
+            }
+        }
+    }
+}
 
 /// Why a file or field was refused before sending.
 #[derive(thiserror::Error, Debug)]
@@ -56,6 +88,8 @@ pub enum UploadError {
     CannotRead(#[source] std::io::Error),
     #[error("file is larger than the {limit} bytes limit (it grew while being read)")]
     GrewWhileReading { limit: u64 },
+    #[error("the file could not be read within {limit:?}: it may still be downloading from a cloud drive, or sit on a network mount that does not answer")]
+    ReadTimedOut { limit: Duration },
     #[error(
         "unrecognised file type (first bytes: {}); accepted types are {}, checked on the content and not on the extension",
         signature_preview(.first_bytes),
@@ -68,6 +102,12 @@ pub enum UploadError {
     FilenameTooLong { length: usize, limit: usize },
     #[error("filename must not contain control characters")]
     FilenameControlCharacters,
+    #[error("this operation does not take exactly one file")]
+    NotSingleFileOperation,
+    #[error("unknown field `{name}`; accepted fields: {}", .accepted.join(", "))]
+    UnknownField { name: String, accepted: Vec<String> },
+    #[error("{}", .problem.describe(.name))]
+    InvalidField { name: String, problem: FieldProblem },
     #[error("`{name}` is {size} bytes, the limit is {limit} bytes")]
     FieldTooLarge {
         name: String,
@@ -76,6 +116,22 @@ pub enum UploadError {
     },
     #[error("`{name}` must be one of {}", .allowed.join(", "))]
     FieldNotAllowed { name: String, allowed: Vec<String> },
+}
+
+/// Bounds applied to one upload.
+#[derive(Debug, Clone, Copy)]
+pub struct UploadLimits {
+    pub max_bytes: u64,
+    pub read_timeout: Duration,
+    pub permit_wait: Duration,
+}
+
+impl UploadLimits {
+    pub const DEFAULT: UploadLimits = UploadLimits {
+        max_bytes: MAX_UPLOAD_BYTES,
+        read_timeout: READ_TIMEOUT,
+        permit_wait: PERMIT_WAIT_TIMEOUT,
+    };
 }
 
 /// A validated file, ready to attach to a form.
@@ -137,20 +193,45 @@ pub fn parse_allowed_dirs(raw: &str) -> Result<Vec<PathBuf>> {
         .collect()
 }
 
+/// Wait for one of the upload slots.
+/// The slot is held until the permit is dropped.
+pub async fn acquire_upload_permit(
+    uploads: &Arc<Semaphore>,
+    wait: Duration,
+) -> Result<OwnedSemaphorePermit, ClientError> {
+    match tokio::time::timeout(wait, Arc::clone(uploads).acquire_owned()).await {
+        Ok(Ok(permit)) => Ok(permit),
+        // Never closed: only the wait can fail.
+        _ => Err(ClientError::UploadsBusy {
+            limit: MAX_CONCURRENT_UPLOADS,
+            waited: wait,
+        }),
+    }
+}
+
+fn invalid_args(operation_id: &str, refusal: &UploadError) -> ClientError {
+    ClientError::InvalidArgs {
+        operation_id: operation_id.to_string(),
+        message: refusal.to_string(),
+    }
+}
+
 /// Read the file behind `raw_path` after every local check.
-/// The limit is a parameter: tests pass small ones.
+/// The limits are a parameter: tests pass small ones.
 pub async fn load_file(
     operation_id: &str,
     raw_path: &str,
     allowed_dirs: &[PathBuf],
-    max_bytes: u64,
+    limits: UploadLimits,
 ) -> Result<UploadFile, ClientError> {
-    load(raw_path, allowed_dirs, max_bytes)
-        .await
-        .map_err(|refusal| ClientError::InvalidArgs {
-            operation_id: operation_id.to_string(),
-            message: refusal.to_string(),
-        })
+    let reading = load(raw_path, allowed_dirs, limits.max_bytes);
+    let outcome = match tokio::time::timeout(limits.read_timeout, reading).await {
+        Ok(read) => read,
+        Err(_elapsed) => Err(UploadError::ReadTimedOut {
+            limit: limits.read_timeout,
+        }),
+    };
+    outcome.map_err(|refusal| invalid_args(operation_id, &refusal))
 }
 
 async fn load(
@@ -158,6 +239,21 @@ async fn load(
     allowed_dirs: &[PathBuf],
     max_bytes: u64,
 ) -> Result<UploadFile, UploadError> {
+    let given = absolute_path(raw_path)?;
+    let path = resolve(given).await?;
+    check_allowed(&path, allowed_dirs)?;
+    ensure_regular_file(&path).await?;
+    let bytes = read_file(&path, max_bytes).await?;
+    let content_type = recognised_type(&bytes)?;
+    Ok(UploadFile {
+        name: display_name(given, &path, raw_path),
+        path,
+        content_type,
+        bytes: Bytes::from(bytes),
+    })
+}
+
+fn absolute_path(raw_path: &str) -> Result<&Path, UploadError> {
     if raw_path.len() > MAX_PATH_BYTES {
         return Err(UploadError::PathTooLong {
             limit: MAX_PATH_BYTES,
@@ -169,65 +265,76 @@ async fn load(
             path: given.to_path_buf(),
         });
     }
+    Ok(given)
+}
 
-    let path = tokio::fs::canonicalize(given)
+async fn resolve(given: &Path) -> Result<PathBuf, UploadError> {
+    tokio::fs::canonicalize(given)
         .await
         .map_err(|source| UploadError::Unreadable {
             path: given.to_path_buf(),
             source,
-        })?;
+        })
+}
 
-    if !allowed_dirs.is_empty() && !allowed_dirs.iter().any(|dir| path.starts_with(dir)) {
-        let allowed: Vec<String> = allowed_dirs
-            .iter()
-            .map(|dir| dir.display().to_string())
-            .collect();
-        return Err(UploadError::OutsideAllowedDirs {
-            path,
-            allowed: allowed.join(", "),
-        });
+fn check_allowed(path: &Path, allowed_dirs: &[PathBuf]) -> Result<(), UploadError> {
+    let is_inside = |dir: &PathBuf| path.starts_with(dir);
+    if allowed_dirs.is_empty() || allowed_dirs.iter().any(is_inside) {
+        return Ok(());
     }
+    let allowed: Vec<String> = allowed_dirs
+        .iter()
+        .map(|dir| dir.display().to_string())
+        .collect();
+    Err(UploadError::OutsideAllowedDirs {
+        path: path.to_path_buf(),
+        allowed: allowed.join(", "),
+    })
+}
 
-    // Check the kind first: opening a FIFO blocks.
-    let on_disk = tokio::fs::metadata(&path)
+/// Check the kind first: opening a FIFO blocks.
+async fn ensure_regular_file(path: &Path) -> Result<(), UploadError> {
+    let on_disk = tokio::fs::metadata(path)
         .await
         .map_err(|source| UploadError::Unreadable {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })?;
-    if !on_disk.is_file() {
-        return Err(UploadError::NotRegularFile { path });
+    if on_disk.is_file() {
+        return Ok(());
     }
+    Err(UploadError::NotRegularFile {
+        path: path.to_path_buf(),
+    })
+}
 
-    let file = File::open(&path)
+async fn read_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, UploadError> {
+    let file = File::open(path)
         .await
         .map_err(|source| UploadError::CannotOpen {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })?;
     let length = check_open_file(&file, max_bytes).await?;
-    let bytes = read_bounded(file, length, max_bytes).await?;
+    read_bounded(file, length, max_bytes).await
+}
 
-    let content_type =
-        detect_content_type(&bytes).ok_or_else(|| UploadError::UnrecognisedType {
-            first_bytes: bytes
-                .iter()
-                .take(SIGNATURE_PREVIEW_BYTES)
-                .copied()
-                .collect(),
-        })?;
-    let name = given
+fn recognised_type(bytes: &[u8]) -> Result<&'static str, UploadError> {
+    detect_content_type(bytes).ok_or_else(|| UploadError::UnrecognisedType {
+        first_bytes: bytes
+            .iter()
+            .take(SIGNATURE_PREVIEW_BYTES)
+            .copied()
+            .collect(),
+    })
+}
+
+fn display_name(given: &Path, path: &Path, raw_path: &str) -> String {
+    given
         .file_name()
         .or_else(|| path.file_name())
         .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| raw_path.to_string());
-
-    Ok(UploadFile {
-        path,
-        name,
-        content_type,
-        bytes: Bytes::from(bytes),
-    })
+        .unwrap_or_else(|| raw_path.to_string())
 }
 
 /// Size and kind as seen through the open descriptor.
@@ -327,126 +434,188 @@ pub fn check_filename(name: &str) -> Result<(), UploadError> {
     Ok(())
 }
 
-/// Turn a multipart operation's body into a form.
-/// Fields are checked against the schema before reading the file.
+/// The part of the input schema that uploads need.
+struct InputSchema {
+    properties: Map<String, Value>,
+    required: Vec<String>,
+}
+
+impl InputSchema {
+    fn of(tool: &GeneratedTool) -> Self {
+        let schema: Value = serde_json::from_str(tool.input_schema_json).unwrap_or(Value::Null);
+        let properties = match schema.get("properties") {
+            Some(Value::Object(declared)) => declared.clone(),
+            _ => Map::new(),
+        };
+        let required = match schema.get("required") {
+            Some(Value::Array(names)) => names
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect(),
+            _ => Vec::new(),
+        };
+        Self {
+            properties,
+            required,
+        }
+    }
+
+    fn declares(&self, name: &str) -> bool {
+        self.properties.contains_key(name)
+    }
+
+    fn is_object(&self, name: &str) -> bool {
+        let declared = self.properties.get(name).and_then(|p| p.get("type"));
+        declared.and_then(Value::as_str) == Some("object")
+    }
+
+    fn allowed_values(&self, name: &str) -> Option<&Vec<Value>> {
+        let declared = self.properties.get(name).and_then(|p| p.get("enum"));
+        declared.and_then(Value::as_array)
+    }
+}
+
+/// A multipart request whose fields passed validation.
+/// No file has been read yet.
+#[derive(Debug)]
+pub struct UploadRequest {
+    operation_id: &'static str,
+    file_field: &'static str,
+    raw_path: String,
+    explicit_name: Option<String>,
+    parts: Vec<FormPart>,
+    declares_filename: bool,
+}
+
+/// Validate a multipart body against the input schema.
 /// `body` is what `split_params` returned.
-pub async fn prepare(
+pub fn parse_request(
     tool: &GeneratedTool,
     body: Option<Value>,
-    allowed_dirs: &[PathBuf],
-    max_bytes: u64,
-) -> Result<PreparedUpload, ClientError> {
-    let invalid = |message: String| ClientError::InvalidArgs {
-        operation_id: tool.name.to_string(),
-        message,
-    };
-    let [file_field] = tool.binary_fields else {
-        return Err(invalid(
-            "this operation does not take exactly one file".to_string(),
-        ));
-    };
+) -> Result<UploadRequest, ClientError> {
+    build_request(tool, body).map_err(|refusal| invalid_args(tool.name, &refusal))
+}
 
+fn build_request(tool: &GeneratedTool, body: Option<Value>) -> Result<UploadRequest, UploadError> {
+    let [file_field] = tool.binary_fields else {
+        return Err(UploadError::NotSingleFileOperation);
+    };
     let mut fields = match body {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     };
-    let schema: Value =
-        serde_json::from_str(tool.input_schema_json).unwrap_or(Value::Object(Map::new()));
-    let empty = Map::new();
-    let properties = schema
-        .get("properties")
-        .and_then(Value::as_object)
-        .unwrap_or(&empty);
-
-    if let Some(unknown) = fields.keys().find(|k| !properties.contains_key(k.as_str())) {
-        let accepted: Vec<&str> = properties.keys().map(String::as_str).collect();
-        return Err(invalid(format!(
-            "unknown field `{}`; accepted fields: {}",
-            unknown,
-            accepted.join(", ")
-        )));
-    }
-    let required = schema
-        .get("required")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter(|name| !tool.path_template.contains(&format!("{{{}}}", name)));
-    for name in required {
-        if !matches!(fields.get(name), Some(value) if !value.is_null()) {
-            return Err(invalid(format!("missing required field `{}`", name)));
-        }
-    }
-
-    let raw_path = match fields.remove(*file_field) {
-        Some(Value::String(path)) => path,
-        _ => {
-            return Err(invalid(format!(
-                "`{}` must be the absolute path of a local file",
-                file_field
-            )))
-        }
-    };
-    let explicit_name = match fields.remove("filename") {
-        Some(Value::String(name)) => Some(name),
-        Some(Value::Null) | None => None,
-        Some(_) => return Err(invalid("`filename` must be a string".to_string())),
-    };
-
-    let mut parts = Vec::new();
-    for (name, value) in fields {
-        let property = properties.get(&name);
-        let is_object =
-            property.and_then(|p| p.get("type")).and_then(Value::as_str) == Some("object");
-        let part = match value {
-            Value::Null => continue,
-            Value::Object(_) if is_object => FormPart::Json {
-                json: value.to_string(),
-                name,
-            },
-            _ if is_object => return Err(invalid(format!("`{}` must be a JSON object", name))),
-            Value::String(text) => FormPart::Text { name, value: text },
-            Value::Number(number) => FormPart::Text {
-                name,
-                value: number.to_string(),
-            },
-            Value::Bool(flag) => FormPart::Text {
-                name,
-                value: flag.to_string(),
-            },
-            _ => return Err(invalid(format!("`{}` must be a string", name))),
-        };
-        check_part(&part, property).map_err(|refusal| invalid(refusal.to_string()))?;
-        parts.push(part);
-    }
-
-    let file = load_file(tool.name, &raw_path, allowed_dirs, max_bytes).await?;
-    let file_name = explicit_name.unwrap_or(file.name);
-    check_filename(&file_name).map_err(|refusal| invalid(refusal.to_string()))?;
-
-    // Part filename encoding varies between servers.
-    // Operations declaring `filename` also get it as UTF-8 text.
-    if properties.contains_key("filename") {
-        parts.push(FormPart::Text {
-            name: "filename".to_string(),
-            value: file_name.clone(),
-        });
-    }
-
-    Ok(PreparedUpload {
-        body: MultipartBody {
-            parts,
-            file_field: file_field.to_string(),
-            file_name,
-            content_type: file.content_type,
-            bytes: file.bytes,
-        },
-        path: file.path,
+    let schema = InputSchema::of(tool);
+    reject_unknown_fields(&fields, &schema)?;
+    require_fields(tool, &schema, &fields)?;
+    let raw_path = take_path(&mut fields, file_field)?;
+    let explicit_name = take_filename(&mut fields)?;
+    Ok(UploadRequest {
+        operation_id: tool.name,
+        file_field,
+        raw_path,
+        explicit_name,
+        parts: form_parts(fields, &schema)?,
+        declares_filename: schema.declares(FILENAME_FIELD),
     })
 }
 
-fn check_part(part: &FormPart, property: Option<&Value>) -> Result<(), UploadError> {
+fn invalid_field(name: &str, problem: FieldProblem) -> UploadError {
+    UploadError::InvalidField {
+        name: name.to_string(),
+        problem,
+    }
+}
+
+fn reject_unknown_fields(
+    fields: &Map<String, Value>,
+    schema: &InputSchema,
+) -> Result<(), UploadError> {
+    match fields.keys().find(|name| !schema.declares(name)) {
+        Some(name) => Err(UploadError::UnknownField {
+            name: name.clone(),
+            accepted: schema.properties.keys().cloned().collect(),
+        }),
+        None => Ok(()),
+    }
+}
+
+fn is_path_param(tool: &GeneratedTool, name: &str) -> bool {
+    tool.path_template.contains(&format!("{{{}}}", name))
+}
+
+fn require_fields(
+    tool: &GeneratedTool,
+    schema: &InputSchema,
+    fields: &Map<String, Value>,
+) -> Result<(), UploadError> {
+    let body_fields = schema.required.iter().filter(|n| !is_path_param(tool, n));
+    for name in body_fields {
+        if !matches!(fields.get(name.as_str()), Some(value) if !value.is_null()) {
+            return Err(invalid_field(name, FieldProblem::Missing));
+        }
+    }
+    Ok(())
+}
+
+fn take_path(fields: &mut Map<String, Value>, file_field: &str) -> Result<String, UploadError> {
+    match fields.remove(file_field) {
+        Some(Value::String(path)) => Ok(path),
+        _ => Err(invalid_field(file_field, FieldProblem::NotAPath)),
+    }
+}
+
+fn take_filename(fields: &mut Map<String, Value>) -> Result<Option<String>, UploadError> {
+    match fields.remove(FILENAME_FIELD) {
+        Some(Value::String(name)) => Ok(Some(name)),
+        Some(Value::Null) | None => Ok(None),
+        Some(_) => Err(invalid_field(FILENAME_FIELD, FieldProblem::NotAString)),
+    }
+}
+
+fn form_parts(
+    fields: Map<String, Value>,
+    schema: &InputSchema,
+) -> Result<Vec<FormPart>, UploadError> {
+    let mut parts = Vec::new();
+    for (name, value) in fields {
+        let Some(part) = form_part(name, value, schema)? else {
+            continue;
+        };
+        check_part(&part, schema)?;
+        parts.push(part);
+    }
+    Ok(parts)
+}
+
+fn form_part(
+    name: String,
+    value: Value,
+    schema: &InputSchema,
+) -> Result<Option<FormPart>, UploadError> {
+    let is_object = schema.is_object(&name);
+    let part = match value {
+        Value::Null => return Ok(None),
+        Value::Object(_) if is_object => FormPart::Json {
+            json: value.to_string(),
+            name,
+        },
+        _ if is_object => return Err(invalid_field(&name, FieldProblem::NotAnObject)),
+        Value::String(text) => FormPart::Text { name, value: text },
+        Value::Number(number) => FormPart::Text {
+            name,
+            value: number.to_string(),
+        },
+        Value::Bool(flag) => FormPart::Text {
+            name,
+            value: flag.to_string(),
+        },
+        _ => return Err(invalid_field(&name, FieldProblem::NotAString)),
+    };
+    Ok(Some(part))
+}
+
+fn check_part(part: &FormPart, schema: &InputSchema) -> Result<(), UploadError> {
     let (name, text) = match part {
         FormPart::Text { name, value } => (name, value),
         FormPart::Json { name, json } => (name, json),
@@ -458,9 +627,7 @@ fn check_part(part: &FormPart, property: Option<&Value>) -> Result<(), UploadErr
             limit: MAX_FIELD_BYTES,
         });
     }
-    let allowed = property
-        .and_then(|p| p.get("enum"))
-        .and_then(Value::as_array);
+    let allowed = schema.allowed_values(name);
     if let (FormPart::Text { value, .. }, Some(allowed)) = (part, allowed) {
         if !allowed.iter().any(|v| v.as_str() == Some(value.as_str())) {
             return Err(UploadError::FieldNotAllowed {
@@ -470,6 +637,44 @@ fn check_part(part: &FormPart, property: Option<&Value>) -> Result<(), UploadErr
         }
     }
     Ok(())
+}
+
+impl UploadRequest {
+    /// Read the file and build the form.
+    pub async fn read(
+        self,
+        allowed_dirs: &[PathBuf],
+        limits: UploadLimits,
+    ) -> Result<PreparedUpload, ClientError> {
+        let operation_id = self.operation_id;
+        let file = load_file(operation_id, &self.raw_path, allowed_dirs, limits).await?;
+        self.assemble(file)
+            .map_err(|refusal| invalid_args(operation_id, &refusal))
+    }
+
+    fn assemble(self, file: UploadFile) -> Result<PreparedUpload, UploadError> {
+        let file_name = self.explicit_name.unwrap_or(file.name);
+        check_filename(&file_name)?;
+        let mut parts = self.parts;
+        // Part filename encoding varies between servers.
+        // Operations declaring `filename` also get it as UTF-8 text.
+        if self.declares_filename {
+            parts.push(FormPart::Text {
+                name: FILENAME_FIELD.to_string(),
+                value: file_name.clone(),
+            });
+        }
+        Ok(PreparedUpload {
+            body: MultipartBody {
+                parts,
+                file_field: self.file_field.to_string(),
+                file_name,
+                content_type: file.content_type,
+                bytes: file.bytes,
+            },
+            path: file.path,
+        })
+    }
 }
 
 /// What left the machine, merged into the response.

@@ -214,6 +214,8 @@ They run locally, without the network, in this order. A file that fails one is n
 
 Unknown fields, required fields and their allowed values are also checked before the file is read.
 
+Reading the local file is limited to 30 s (a file still downloading from a cloud drive, a network mount that does not answer) and the server runs at most 4 uploads at once, 400 MB of memory at worst: a fifth waits at most 30 s for a slot, then gets the `UPLOADS_BUSY` error.
+
 ### Confining directories: `PENNYLANE_UPLOAD_DIRS`
 
 ```bash

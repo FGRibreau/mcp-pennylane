@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use mcp_pennylane::client::FormPart;
 use mcp_pennylane::error::ClientError;
 use mcp_pennylane::tools::{lookup_tool, split_params};
-use mcp_pennylane::upload::{audit, prepare, PreparedUpload, MAX_UPLOAD_BYTES};
+use mcp_pennylane::upload::{audit, parse_request, PreparedUpload, UploadLimits};
 
 use common::{minimal_pdf, TempDir};
 
@@ -19,7 +19,9 @@ async fn prepare_params(
     let tool = lookup_tool(operation_id).expect("operation present");
     let params = params.as_object().cloned().expect("params are an object");
     let (path, _, body) = split_params(tool, &params).expect("split");
-    let upload = prepare(tool, body, &[], MAX_UPLOAD_BYTES).await?;
+    let upload = parse_request(tool, body)?
+        .read(&[], UploadLimits::DEFAULT)
+        .await?;
     Ok((path, upload))
 }
 
@@ -228,7 +230,7 @@ async fn invoice_options_must_be_an_object() {
 }
 
 #[tokio::test]
-async fn e_invoice_import_needs_a_type_from_its_enum_before_anything_is_read() {
+async fn e_invoice_import_without_a_type_is_refused_before_anything_is_read() {
     let missing = refusal(
         prepare_params(
             "createEInvoiceImport",
@@ -240,7 +242,10 @@ async fn e_invoice_import_needs_a_type_from_its_enum_before_anything_is_read() {
         missing.contains("missing required field `type`"),
         "{missing}"
     );
+}
 
+#[tokio::test]
+async fn e_invoice_import_type_must_come_from_its_enum() {
     let wrong = refusal(
         prepare_params(
             "createEInvoiceImport",
@@ -250,7 +255,10 @@ async fn e_invoice_import_needs_a_type_from_its_enum_before_anything_is_read() {
     );
     assert!(wrong.contains("`type` must be one of"), "{wrong}");
     assert!(wrong.contains("\"supplier\""), "{wrong}");
+}
 
+#[tokio::test]
+async fn e_invoice_import_accepts_a_listed_type() {
     let dir = TempDir::new("einvoice");
     let path = dir.write("facture.pdf", &minimal_pdf());
     let (_, upload) = prepare_params(

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `createSupplierInvoiceEInvoiceImport` joins the direct tools: 74 essentials.
 - A 403 on a multipart operation lists the scopes it requires; a network failure during an upload says the file may have been received, so the caller checks before sending it again.
 - Upload deadline of 60 s plus 1 s per MB instead of a fixed 60 s.
+- Bounded uploads: reading the local file times out after 30 s, and at most 4 uploads run at once (400 MB of memory at worst); a fifth waits at most 30 s for a slot, then gets `UPLOADS_BUSY`.
 
 ### Fixed
 

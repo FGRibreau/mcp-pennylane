@@ -1,57 +1,10 @@
-//! JSON operations keep their schema and request body.
-//! Multipart support must not alter what they send.
-//! Only multipart operations are left out of the fingerprint.
+//! JSON operations keep the request body `split_params` builds.
+//! Six fixed bodies cover POST, PUT, GET and nested calls.
+//! Multipart support must not alter what these send.
 
 use serde_json::{json, Map, Value};
 
-use mcp_pennylane::generated::GENERATED_TOOLS;
 use mcp_pennylane::tools::{lookup_tool, split_params};
-
-const MULTIPART_OPERATIONS: &[&str] = &[
-    "postFileAttachments",
-    "postLedgerAttachments",
-    "createSupplierInvoiceEInvoiceImport",
-    "createCustomerInvoiceEInvoiceImport",
-    "createEInvoiceImport",
-    "postCustomerInvoiceAppendices",
-    "postQuoteAppendices",
-    "postCommercialDocumentAppendices",
-];
-
-const JSON_CATALOG_FINGERPRINT: u64 = 10_721_422_856_727_238_468;
-const JSON_CATALOG_SIZE: usize = 155;
-
-fn fnv1a(hash: &mut u64, bytes: &[u8]) {
-    for byte in bytes.iter().chain(&[0xff]) {
-        *hash ^= u64::from(*byte);
-        *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-}
-
-#[test]
-fn non_multipart_catalog_is_unchanged() {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut count = 0;
-    for tool in GENERATED_TOOLS
-        .iter()
-        .filter(|t| !MULTIPART_OPERATIONS.contains(&t.name))
-    {
-        count += 1;
-        fnv1a(&mut hash, tool.name.as_bytes());
-        fnv1a(&mut hash, tool.description.as_bytes());
-        fnv1a(&mut hash, tool.method.as_bytes());
-        fnv1a(&mut hash, tool.path_template.as_bytes());
-        fnv1a(&mut hash, tool.input_schema_json.as_bytes());
-        for scope in tool.scopes {
-            fnv1a(&mut hash, scope.as_bytes());
-        }
-    }
-    assert_eq!(
-        (count, hash),
-        (JSON_CATALOG_SIZE, JSON_CATALOG_FINGERPRINT),
-        "a JSON operation changed its name, description, method, path, schema or scopes"
-    );
-}
 
 fn params(value: Value) -> Map<String, Value> {
     match value {

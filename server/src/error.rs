@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use std::time::Duration;
 
 const MAX_BODY_SNIPPET_BYTES: usize = 2_048;
 const SUGGESTION_KEY: &str = "suggestion";
@@ -9,6 +10,8 @@ pub enum ClientError {
     Network(String),
     #[error("network error during a file upload: {0}")]
     UploadInterrupted(#[source] Box<ClientError>),
+    #[error("{limit} uploads are already running and none finished within {waited:?}")]
+    UploadsBusy { limit: usize, waited: Duration },
     #[error("HTTP {status}")]
     Http {
         status: u16,
@@ -60,49 +63,14 @@ impl ClientError {
                     "suggestion": "Check connectivity to https://app.pennylane.com and retry."
                 }
             }),
-            ClientError::UploadInterrupted(cause) => {
-                let detail = match cause.as_ref() {
-                    ClientError::Network(message) => message.clone(),
-                    other => other.to_string(),
-                };
-                json!({
-                    "error": {
-                        "code": "NETWORK_ERROR",
-                        "message": format!("{detail}. The file may have been received by Pennylane; check before sending it again."),
-                        SUGGESTION_KEY: "Do not resend blindly: look for the attachment first (a retry can create a duplicate), and resend only if it is missing."
-                    }
-                })
-            }
+            ClientError::UploadInterrupted(cause) => upload_interrupted_value(cause),
+            ClientError::UploadsBusy { .. } => uploads_busy_value(self),
             ClientError::Http {
                 status,
                 body,
                 retry_after_seconds,
                 required_scopes,
-            } => {
-                let (code, suggestion) = classify(*status);
-                let names_scopes = *status == 403 && !required_scopes.is_empty();
-                let suggestion = if names_scopes {
-                    scope_suggestion(required_scopes)
-                } else {
-                    suggestion.to_string()
-                };
-                let mut err = serde_json::Map::new();
-                err.insert("code".into(), json!(code));
-                err.insert(
-                    "message".into(),
-                    json!(format!("Pennylane responded {}", status)),
-                );
-                err.insert("status".into(), json!(status));
-                err.insert("suggestion".into(), json!(suggestion));
-                if names_scopes {
-                    err.insert("required_scopes".into(), json!(required_scopes));
-                }
-                err.insert("upstream_body".into(), truncate_body(body));
-                if let Some(secs) = retry_after_seconds {
-                    err.insert("retry_after_seconds".into(), json!(secs));
-                }
-                json!({ "error": err })
-            }
+            } => http_value(*status, body, *retry_after_seconds, required_scopes),
             ClientError::Readonly {
                 operation_id,
                 method,
@@ -135,6 +103,61 @@ impl ClientError {
             }),
         }
     }
+}
+
+fn upload_interrupted_value(cause: &ClientError) -> Value {
+    let detail = match cause {
+        ClientError::Network(message) => message.clone(),
+        other => other.to_string(),
+    };
+    json!({
+        "error": {
+            "code": "NETWORK_ERROR",
+            "message": format!("{detail}. The file may have been received by Pennylane; check before sending it again."),
+            SUGGESTION_KEY: "Do not resend blindly: look for the attachment first (a retry can create a duplicate), and resend only if it is missing."
+        }
+    })
+}
+
+fn uploads_busy_value(busy: &ClientError) -> Value {
+    json!({
+        "error": {
+            "code": "UPLOADS_BUSY",
+            "message": busy.to_string(),
+            SUGGESTION_KEY: "Wait for a running upload to finish, then call again."
+        }
+    })
+}
+
+fn http_value(
+    status: u16,
+    body: &Value,
+    retry_after_seconds: Option<u64>,
+    required_scopes: &[String],
+) -> Value {
+    let (code, suggestion) = classify(status);
+    let names_scopes = status == 403 && !required_scopes.is_empty();
+    let suggestion = if names_scopes {
+        scope_suggestion(required_scopes)
+    } else {
+        suggestion.to_string()
+    };
+    let mut err = serde_json::Map::new();
+    err.insert("code".into(), json!(code));
+    err.insert(
+        "message".into(),
+        json!(format!("Pennylane responded {}", status)),
+    );
+    err.insert("status".into(), json!(status));
+    err.insert(SUGGESTION_KEY.into(), json!(suggestion));
+    if names_scopes {
+        err.insert("required_scopes".into(), json!(required_scopes));
+    }
+    err.insert("upstream_body".into(), truncate_body(body));
+    if let Some(secs) = retry_after_seconds {
+        err.insert("retry_after_seconds".into(), json!(secs));
+    }
+    json!({ "error": err })
 }
 
 fn scope_suggestion(required_scopes: &[String]) -> String {
@@ -240,6 +263,26 @@ mod tests {
         .with_required_scopes(&["a:all"])
         .to_mcp_value();
         assert!(not_forbidden["error"].get("required_scopes").is_none());
+    }
+
+    #[test]
+    fn busy_uploads_say_how_many_run_and_how_long_the_wait_was() {
+        let busy = ClientError::UploadsBusy {
+            limit: 4,
+            waited: Duration::from_secs(30),
+        };
+        let rendered = busy.to_mcp_value();
+        assert_eq!(rendered["error"]["code"], "UPLOADS_BUSY");
+        let message = rendered["error"]["message"].as_str().expect("message");
+        assert!(
+            message.contains("4 uploads are already running"),
+            "{message}"
+        );
+        assert!(message.contains("none finished within 30s"), "{message}");
+        let suggestion = rendered["error"]["suggestion"]
+            .as_str()
+            .expect("suggestion");
+        assert!(suggestion.contains("then call again"), "{suggestion}");
     }
 
     #[test]

@@ -9,6 +9,7 @@ use rmcp::ErrorData;
 use serde_json::{json, Map, Value};
 use std::borrow::Cow;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tracing::info;
 
 use crate::client::PennylaneClient;
@@ -19,13 +20,17 @@ use crate::tools::{
     execute_tool_schema, lookup_tool, search, search_tool_schema, split_params, visible_tools,
     META_EXECUTE_TOOL, META_SEARCH_TOOL,
 };
-use crate::upload::{audit, prepare, MAX_UPLOAD_BYTES};
+use crate::upload::{
+    acquire_upload_permit, audit, parse_request, UploadLimits, MAX_CONCURRENT_UPLOADS,
+};
 
 #[derive(Clone)]
 pub struct PennylaneService {
     cfg: Config,
     client: Arc<PennylaneClient>,
     visible: Arc<Vec<&'static GeneratedTool>>,
+    uploads: Arc<Semaphore>,
+    upload_limits: UploadLimits,
 }
 
 impl PennylaneService {
@@ -37,6 +42,8 @@ impl PennylaneService {
             cfg,
             client: Arc::new(client),
             visible: Arc::new(visible),
+            uploads: Arc::new(Semaphore::new(MAX_CONCURRENT_UPLOADS)),
+            upload_limits: UploadLimits::DEFAULT,
         })
     }
 
@@ -148,21 +155,7 @@ impl PennylaneService {
 
         let (path, query, body) = split_params(tool, params)?;
         let mut response = if tool.multipart {
-            let upload = prepare(tool, body, &self.cfg.upload_dirs, MAX_UPLOAD_BYTES).await?;
-            info!(
-                operation_id = tool.name,
-                path = %upload.path.display(),
-                filename = %upload.body.file_name,
-                size_bytes = upload.body.bytes.len(),
-                "uploading file"
-            );
-            let mut response = self
-                .client
-                .call_multipart(tool.method, &path, &query, &upload.body)
-                .await
-                .map_err(|e| e.with_required_scopes(tool.scopes))?;
-            augment_upload(&mut response, audit(&upload));
-            response
+            self.upload(tool, &path, &query, body).await?
         } else {
             self.client.call(tool.method, &path, &query, body).await?
         };
@@ -171,6 +164,37 @@ impl PennylaneService {
             augment_get_me(&mut response, &self.cfg);
         }
 
+        Ok(response)
+    }
+
+    /// Send a multipart operation.
+    /// Validation comes first, then a slot, then the file read.
+    /// The slot is held until the response is back.
+    async fn upload(
+        &self,
+        tool: &GeneratedTool,
+        path: &str,
+        query: &[(String, String)],
+        body: Option<Value>,
+    ) -> Result<Value, ClientError> {
+        let request = parse_request(tool, body)?;
+        let _slot = acquire_upload_permit(&self.uploads, self.upload_limits.permit_wait).await?;
+        let upload = request
+            .read(&self.cfg.upload_dirs, self.upload_limits)
+            .await?;
+        info!(
+            operation_id = tool.name,
+            path = %upload.path.display(),
+            filename = %upload.body.file_name,
+            size_bytes = upload.body.bytes.len(),
+            "uploading file"
+        );
+        let mut response = self
+            .client
+            .call_multipart(tool.method, path, query, &upload.body)
+            .await
+            .map_err(|e| e.with_required_scopes(tool.scopes))?;
+        augment_upload(&mut response, audit(&upload));
         Ok(response)
     }
 }
@@ -288,6 +312,7 @@ impl ServerHandler for PennylaneService {
 mod tests {
     use super::*;
     use crate::config::{Environment, ReadonlySource, Transport};
+    use std::time::Duration;
 
     const PIXEL_PNG: &[u8] = include_bytes!("../tests/fixtures/pixel.png");
 
@@ -416,5 +441,111 @@ mod tests {
             }
             other => panic!("expected a refusal, got {other:?}"),
         }
+    }
+
+    fn hold_every_slot(service: &PennylaneService) -> tokio::sync::OwnedSemaphorePermit {
+        let slots = u32::try_from(MAX_CONCURRENT_UPLOADS).expect("slot count fits");
+        let uploads = Arc::clone(&service.uploads);
+        uploads
+            .try_acquire_many_owned(slots)
+            .expect("all slots free")
+    }
+
+    #[tokio::test]
+    async fn a_busy_service_refuses_an_upload_without_reading_the_file() {
+        let mut service = service(false, &closed_port_url(), Vec::new());
+        service.upload_limits.permit_wait = Duration::from_millis(50);
+        let held = hold_every_slot(&service);
+        let params = params(json!({"file": "/nonexistent/never-read.pdf"}));
+
+        let busy = service.dispatch_inner("postFileAttachments", &params).await;
+        assert!(
+            matches!(busy, Err(ClientError::UploadsBusy { .. })),
+            "{busy:?}"
+        );
+
+        drop(held);
+        let free = service.dispatch_inner("postFileAttachments", &params).await;
+        assert!(
+            matches!(free, Err(ClientError::InvalidArgs { .. })),
+            "{free:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_fields_are_refused_without_waiting_for_a_slot() {
+        let mut service = service(false, &closed_port_url(), Vec::new());
+        service.upload_limits.permit_wait = Duration::from_millis(50);
+        let _held = hold_every_slot(&service);
+        let params = params(json!({"file": "relative.pdf", "label": "x"}));
+
+        let outcome = service.dispatch_inner("postFileAttachments", &params).await;
+        match outcome {
+            Err(ClientError::InvalidArgs { message, .. }) => {
+                assert!(message.contains("unknown field `label`"), "{message}")
+            }
+            other => panic!("expected a field refusal, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn slots_come_back_after_a_refusal_and_after_a_failed_send() {
+        let service = service(false, &closed_port_url(), Vec::new());
+        let file = TempFile::png("slots");
+
+        let refused = service
+            .dispatch_inner(
+                "postFileAttachments",
+                &params(json!({"file": "relative.pdf"})),
+            )
+            .await;
+        assert!(refused.is_err());
+        assert_eq!(service.uploads.available_permits(), MAX_CONCURRENT_UPLOADS);
+
+        let sent = service
+            .dispatch_inner("postFileAttachments", &params(json!({"file": file.path()})))
+            .await;
+        assert!(
+            matches!(sent, Err(ClientError::UploadInterrupted(_))),
+            "{sent:?}"
+        );
+        assert_eq!(service.uploads.available_permits(), MAX_CONCURRENT_UPLOADS);
+    }
+
+    /// A listener that accepts connections and never answers.
+    async fn silent_peer_and_service() -> (tokio::net::TcpListener, PennylaneService) {
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let base_url = format!("http://{}", silent.local_addr().expect("addr"));
+        (silent, service(false, &base_url, Vec::new()))
+    }
+
+    #[tokio::test]
+    async fn a_slot_is_held_while_the_server_stays_silent() {
+        let (silent, service) = silent_peer_and_service().await;
+        let file = TempFile::png("in-flight");
+        let params = params(json!({"file": file.path()}));
+        let sending = tokio::spawn({
+            let service = service.clone();
+            async move { service.dispatch_inner("postFileAttachments", &params).await }
+        });
+
+        let (peer, _) = tokio::time::timeout(Duration::from_secs(10), silent.accept())
+            .await
+            .expect("the request arrives")
+            .expect("accepted");
+        assert_eq!(
+            service.uploads.available_permits(),
+            MAX_CONCURRENT_UPLOADS - 1
+        );
+
+        drop(peer);
+        let outcome = tokio::time::timeout(Duration::from_secs(10), sending)
+            .await
+            .expect("the send ends once the peer hangs up")
+            .expect("the task joins");
+        assert!(matches!(outcome, Err(ClientError::UploadInterrupted(_))));
+        assert_eq!(service.uploads.available_permits(), MAX_CONCURRENT_UPLOADS);
     }
 }

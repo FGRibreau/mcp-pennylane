@@ -7,6 +7,7 @@
 mod common;
 
 use bytes::Bytes;
+use serde_json::Value;
 
 use mcp_pennylane::client::{FormPart, MultipartBody, PennylaneClient};
 use mcp_pennylane::error::ClientError;
@@ -19,14 +20,10 @@ fn token() -> String {
         .expect("PENNYLANE_API_KEY must be set for integration tests (no silent skip)")
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[ignore = "sends one real upload to Pennylane; run it explicitly with --ignored"]
-async fn live_filename_past_255_characters_is_rejected_naming_the_field() {
-    let client = PennylaneClient::new(&token(), BASE_URL, false).expect("client builds");
+fn oversized_filename_upload() -> MultipartBody {
     let filename = format!("{}.pdf", "a".repeat(FILENAME_CHARS - ".pdf".len()));
     assert_eq!(filename.chars().count(), FILENAME_CHARS);
-
-    let body = MultipartBody {
+    MultipartBody {
         parts: vec![FormPart::Text {
             name: "filename".to_string(),
             value: filename.clone(),
@@ -35,12 +32,10 @@ async fn live_filename_past_255_characters_is_rejected_naming_the_field() {
         file_name: filename,
         content_type: "application/pdf",
         bytes: Bytes::from(common::minimal_pdf()),
-    };
+    }
+}
 
-    let outcome = client
-        .call_multipart("POST", "/api/external/v2/file_attachments", &[], &body)
-        .await;
-
+fn assert_rejected_naming_filename(outcome: Result<Value, ClientError>) {
     match outcome {
         Err(ClientError::Http {
             status,
@@ -59,4 +54,19 @@ async fn live_filename_past_255_characters_is_rejected_naming_the_field() {
         Ok(created) => panic!("Pennylane accepted a 256-character filename and created: {created}"),
         Err(other) => panic!("expected an HTTP 4xx from Pennylane, got {other:?}"),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[ignore = "sends one real upload to Pennylane; run it explicitly with --ignored"]
+async fn live_filename_past_255_characters_is_rejected_naming_the_field() {
+    let client = PennylaneClient::new(&token(), BASE_URL, false).expect("client builds");
+    let outcome = client
+        .call_multipart(
+            "POST",
+            "/api/external/v2/file_attachments",
+            &[],
+            &oversized_filename_upload(),
+        )
+        .await;
+    assert_rejected_naming_filename(outcome);
 }

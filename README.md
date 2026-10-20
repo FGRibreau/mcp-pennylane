@@ -214,6 +214,8 @@ Ils s'exécutent en local, sans réseau, dans cet ordre. Un fichier qui en écho
 
 Les champs inconnus, les champs requis et leurs valeurs permises sont aussi vérifiés avant que le fichier soit lu.
 
+La lecture du fichier local est limitée à 30 s (fichier encore en téléchargement depuis un cloud, montage réseau qui ne répond pas) et le serveur traite au plus 4 envois à la fois, soit 400 Mo de mémoire au pire : un cinquième attend un créneau 30 s au plus, puis reçoit l'erreur `UPLOADS_BUSY`.
+
 ### Restreindre les dossiers : `PENNYLANE_UPLOAD_DIRS`
 
 ```bash
