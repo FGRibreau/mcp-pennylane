@@ -158,7 +158,7 @@ impl PennylaneClient {
         body: Option<Value>,
     ) -> Result<Value, ClientError> {
         let body = body.as_ref().map_or(RequestBody::None, RequestBody::Json);
-        self.execute(method, path, query, body).await
+        self.send_with_retry(method, path, query, body).await
     }
 
     /// Send a `multipart/form-data` request.
@@ -171,7 +171,7 @@ impl PennylaneClient {
         query: &[(String, String)],
         body: &MultipartBody,
     ) -> Result<Value, ClientError> {
-        self.execute(method, path, query, RequestBody::Multipart(body))
+        self.send_with_retry(method, path, query, RequestBody::Multipart(body))
             .await
             .map_err(|e| match e {
                 network @ ClientError::Network(_) => {
@@ -181,7 +181,8 @@ impl PennylaneClient {
             })
     }
 
-    async fn execute(
+    /// Send, retry once after a 429, decode the JSON.
+    async fn send_with_retry(
         &self,
         method: &str,
         path: &str,
