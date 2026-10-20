@@ -4,7 +4,7 @@
 
 # mcp-pennylane
 
-**Pilotez votre compta Pennylane depuis Claude — factures, journal, banque, FEC**
+**Lisez et écrivez dans votre compta Pennylane depuis Claude (factures, devis, écritures, justificatifs, rapprochement bancaire), exports FEC compris**
 
 <br/>
 
@@ -19,6 +19,8 @@
 [![CI](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml/badge.svg)](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://rust-lang.org)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-6366f1.svg)](https://modelcontextprotocol.io)
+
+<sub>`mcp-pennylane` est un projet open source indépendant (licence MIT). Il n'est ni édité, ni approuvé, ni sponsorisé par Pennylane. Pennylane et Claude sont des marques de leurs titulaires, citées pour désigner l'API et l'assistant avec lesquels le projet interopère.</sub>
 
 </div>
 
@@ -88,12 +90,30 @@
 
 ## C'est quoi ?
 
-`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Environ 74 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne — la totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
+`mcp-pennylane` connecte Claude (ou n'importe quel hôte MCP) à l'[API Pennylane Company v2](https://pennylane.readme.io). Il lit votre compta et, quand le scope du token l'autorise, il y écrit. Il crée, modifie, finalise et envoie des factures clients, crée et envoie des devis, passe des écritures au grand livre, lettre des lignes d'écriture et dépose le PDF d'un justificatif. Environ 74 opérations essentielles sont exposées directement à l'hôte, et deux méta-outils (`pennylane_search_tools`, `pennylane_execute`) couvrent la longue traîne. La totalité des 163 opérations reste donc utilisable sans saturer le budget d'outils du client MCP.
 
-Pilotez votre compta depuis un chat : lister et créer des factures clients, rapprocher des transactions bancaires, interroger le grand livre, générer les exports FEC pour votre expert-comptable, gérer les mandats GoCardless et SEPA — le tout en langage naturel.
+Depuis un chat, vous listez et créez des factures clients, rapprochez des transactions bancaires, interrogez le grand livre, déposez un justificatif, générez les exports FEC pour votre expert-comptable et gérez les mandats GoCardless et SEPA, le tout en langage naturel.
+
+## Et le MCP de Pennylane ?
+
+Pennylane propose [son propre serveur MCP](https://help.pennylane.com/fr/articles/757740-connecter-votre-assistant-ia-au-mcp-pennylane) (page consultée le 20 octobre 2026), distant, branché par OAuth avec vos identifiants Pennylane, sans rien à installer. Il démarre en lecture seule. Sur [la page d'annonce](https://www.pennylane.com/fr/blog/produit/mcp-pennylane) (mise à jour le 13 octobre 2026, consultée le 20 octobre 2026), Pennylane écrit : « À ce stade, votre assistant IA ne peut ni créer, ni modifier, ni supprimer des éléments dans votre espace Pennylane. Il peut seulement les consulter et les récupérer. » L'éditeur indique travailler « sur un accès en écriture et sur les validations humaines que ce niveau de permission implique ».
+
+`mcp-pennylane` passe par l'API Company v2 avec un token, et il écrit :
+
+| | MCP de Pennylane | `mcp-pennylane` |
+|---|---|---|
+| Consulter factures, écritures, transactions | oui | oui |
+| Créer et modifier des éléments | aucune écriture à ce jour | oui (factures, devis, clients, fournisseurs, écritures), si le scope du token le permet |
+| Déposer le PDF d'un justificatif ([Envoi de fichiers](#envoi-de-fichiers)) | aucune écriture à ce jour | oui |
+| Droits d'accès | les mêmes droits que l'utilisateur connecté, outils activables un par un | portée du token Pennylane, lecture seule forçable |
+| Connexion | OAuth avec vos identifiants Pennylane, serveur distant, rien à installer | token API, binaire local ou auto-hébergé |
+| Mode lecture seule | le seul mode à ce jour | auto-détecté d'après le scope du token, ou forcé |
+
+Les deux se combinent dans un même client, le serveur de Pennylane pour consulter et `mcp-pennylane` quand Claude doit écrire. Comparatif établi le 20 octobre 2026 d'après les deux pages citées. L'état actuel est sur le site de Pennylane. `mcp-pennylane` est indépendant de Pennylane.
 
 ## Fonctionnalités
 
+- ✍️ **Lecture et écriture** : factures et devis, écritures du grand livre, clients, fournisseurs, mandats SEPA, dépôt de PDF de justificatifs (multipart)
 - ✨ **Toutes les 163 opérations Pennylane** — 74 essentielles directement + `pennylane_search_tools` + `pennylane_execute` pour la longue traîne
 - 🔒 **Auto-détection du mode lecture seule** — interroge `GET /me` au démarrage, force le readonly si chaque scope du token finit par `:readonly`
 - ⚡ **Deux transports** — stdio pour Claude Desktop, HTTP streamable pour le distant (`/mcp` + `/health`)
@@ -110,7 +130,8 @@ Pilotez votre compta depuis un chat : lister et créer des factures clients, rap
 cargo install mcp-pennylane
 
 # 2. Générer un token Pennylane dans Paramètres → Connectivité → Développeurs
-#    Scope recommandé : « Lecture seule — récupérer les données »
+#    Pour consulter seulement : « Lecture seule — récupérer les données »
+#    Pour que Claude écrive (factures, écritures, justificatifs) : un scope qui autorise l'écriture
 export PENNYLANE_API_KEY="votre-token-pennylane"
 
 # 3. Brancher dans Claude Desktop, puis redémarrer Claude
@@ -129,6 +150,8 @@ EOF
 C'est tout — Claude voit maintenant `getMe`, `getCustomers`, `pennylane_search_tools`, et 70+ autres outils.
 
 > 💡 Le serveur interroge `GET /me` au démarrage. Si votre token est en lecture seule, il active automatiquement le mode readonly (la bannière affiche `mode=readonly (auto)`). Définissez `PENNYLANE_READONLY=true` pour ignorer la sonde et forcer le readonly de manière déterministe (recommandé en CI).
+
+> ⚠️ Ce que Claude écrit dans Pennylane est réel. Commencez avec un token en lecture seule, puis ouvrez l'écriture quand vous avez vu ce qu'il fait. `PENNYLANE_ENV=sandbox` n'est qu'un repère visuel, sans effet sur les appels (voir [Sandbox](#sandbox)).
 
 ## Configuration
 
@@ -159,13 +182,15 @@ Chaque variable d'environnement a un `--flag` équivalent (`--token`, `--base-ur
 
 ## Utilisation
 
-Trois workflows de bout en bout que vous pouvez piloter depuis Claude :
+Quatre workflows de bout en bout que vous pouvez piloter depuis Claude :
 
 **1. Lister les factures impayées récentes.** *« Montre-moi mes factures clients impayées des 30 derniers jours. »* → Claude appelle `getCustomerInvoices` avec un filtre du type `[{"field":"status","operator":"eq","value":"unpaid"},{"field":"date","operator":"gteq","value":"2026-04-06"}]`, parcourt la pagination via `next_cursor` si nécessaire.
 
 **2. Rapprocher une transaction bancaire.** *« Trouve une transaction de 1 250 € non rapprochée cette semaine et lie-la à la bonne facture. »* → Claude appelle `getTransactions`, puis `pennylane_search_tools(query="match")` pour découvrir l'opération de rapprochement, puis `pennylane_execute(tool_name="postCustomerInvoiceMatchedTransactions", params={"id": <id_facture>, "transaction_id": <id_tx>})`.
 
 **3. Générer un FEC pour le T1 2026.** *« Génère le FEC de janvier à mars 2026 et préviens-moi quand il est prêt. »* → Claude appelle `exportFec` avec `{"start_date":"2026-01-01","end_date":"2026-03-31"}`, polle `getFecExport` jusqu'à ce que le statut passe à `done`, puis renvoie l'URL de téléchargement.
+
+**4. Déposer un justificatif.** *« Dépose le PDF `octobre.pdf` du dossier Factures dans Pennylane. »* → Claude appelle `postFileAttachments` avec le chemin absolu du fichier et reçoit l'`id` et l'`url` de la pièce déposée (voir [Envoi de fichiers](#envoi-de-fichiers)). Il faut un token dont le scope autorise l'écriture.
 
 ## Mode lecture seule
 

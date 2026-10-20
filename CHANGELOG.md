@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- README (French and English) and crate description now present the server as reading and writing Pennylane (invoices, quotes, ledger entries, receipt PDFs), with a dated comparison to Pennylane's own read-only MCP, a non-affiliation notice and a warning that writes are real.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added
