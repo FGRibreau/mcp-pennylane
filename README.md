@@ -17,7 +17,7 @@
 [![downloads](https://img.shields.io/crates/d/mcp-pennylane.svg)](https://crates.io/crates/mcp-pennylane)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml/badge.svg)](https://github.com/FGRibreau/mcp-pennylane/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://rust-lang.org)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-6366f1.svg)](https://modelcontextprotocol.io)
 
 <sub>`mcp-pennylane` est un projet open source indépendant (licence MIT). Il n'est ni édité, ni approuvé, ni sponsorisé par Pennylane. Pennylane et Claude sont des marques de leurs titulaires, citées pour désigner l'API et l'assistant avec lesquels le projet interopère.</sub>
